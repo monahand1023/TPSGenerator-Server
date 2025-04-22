@@ -2,18 +2,14 @@
 
 A configurable mock HTTP server for simulating API behavior with controlled response times, error rates, and custom responses. This is the companion for the TPS Generator load testing tool, found here: https://github.com/monahand1023/TPSGenerator
 
-
-
-
-
-
-
 ## Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
+
+
   - [Building and Running](#building-and-running)
 - [Configuration](#configuration)
   - [Endpoint Configuration](#endpoint-configuration)
@@ -27,11 +23,7 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Using with TPS Generator](#using-with-tps-generator)
 - [Examples](#examples)
 
-
-
 ## Overview
-
-
 
 This Mock HTTP Server provides a flexible environment for simulating API behavior during load and performance testing. It works seamlessly with the TPS Generator to create realistic testing scenarios with controlled response characteristics.
 
@@ -214,12 +206,6 @@ curl -X POST http://localhost:8080/admin/config/users -H "Content-Type: applicat
 
 ```bash
 curl -X POST http://localhost:8080/admin/config/orders -H "Content-Type: application/json" -d '{
-
-
-
-
-
-
   "minDelay": 100,
   "maxDelay": 500,
   "errorRate": 0.05,
@@ -250,92 +236,26 @@ This setup allows you to:
 - Simulate realistic API behavior
 - Test how your application handles varying response times
 - Validate error handling
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 - Analyze performance under different load patterns
+
+## Sample Console Output
+
+```
+2025-04-22 10:57:29.574  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Completed request #7566: Status 200 - Response time: 47ms
+2025-04-22 10:57:29.577  INFO 25603 --- [nio-8080-exec-7] MockHttpServerApplication$MockController : Received request #7571: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
+2025-04-22 10:57:29.585  INFO 25603 --- [nio-8080-exec-4] MockHttpServerApplication$MockController : Completed request #7569: Status 200 - Response time: 27ms
+2025-04-22 10:57:29.585  INFO 25603 --- [nio-8080-exec-4] MockHttpServerApplication$MockController : Received request #7572: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
+2025-04-22 10:57:29.592  INFO 25603 --- [nio-8080-exec-2] MockHttpServerApplication$MockController : Completed request #7568: Status 200 - Response time: 44ms
+2025-04-22 10:57:29.598  INFO 25603 --- [nio-8080-exec-4] MockHttpServerApplication$MockController : Completed request #7572: Status 200 - Response time: 12ms
+2025-04-22 10:57:29.598  INFO 25603 --- [nio-8080-exec-9] MockHttpServerApplication$MockController : Received request #7573: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
+2025-04-22 10:57:29.605  INFO 25603 --- [nio-8080-exec-6] MockHttpServerApplication$MockController : Completed request #7564: Status 200 - Response time: 97ms
+2025-04-22 10:57:29.605  INFO 25603 --- [nio-8080-exec-3] MockHttpServerApplication$MockController : Received request #7574: POST /orders - Headers: {connection=Upgrade, HTTP2-Settings, content-length=32, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, authorization=Bearer token123, content-type=application/json}
+2025-04-22 10:57:29.613  INFO 25603 --- [nio-8080-exec-7] MockHttpServerApplication$MockController : Completed request #7571: Status 200 - Response time: 31ms
+2025-04-22 10:57:29.616  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Received request #7575: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
+2025-04-22 10:57:29.622  INFO 25603 --- [io-8080-exec-10] MockHttpServerApplication$MockController : Completed request #7567: Status 200 - Response time: 84ms
+2025-04-22 10:57:29.648  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Completed request #7575: Status 200 - Response time: 30ms
+2025-04-22 10:57:29.649  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Received request #7576: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
+2025-04-22 10:57:29.666  INFO 25603 --- [nio-8080-exec-5] MockHttpServerApplication$MockController : Completed request #7570: Status 200 - Response time: 97ms
+2025-04-22 10:57:29.671  INFO 25603 --- [nio-8080-exec-9] MockHttpServerApplication$MockController : Completed request #7573: Status 200 - Response time: 67ms
+2025-04-22 10:57:29.678  INFO 25603 --- [nio-8080-exec-3] MockHttpServerApplication$MockController : Completed request #7574: Status 200 - Response time: 68ms
+```
