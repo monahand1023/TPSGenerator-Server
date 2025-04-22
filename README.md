@@ -7,6 +7,8 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Overview](#overview)
 - [Features](#features)
 - [Getting Started](#getting-started)
+
+
   - [Prerequisites](#prerequisites)
 
 
@@ -259,3 +261,7 @@ This setup allows you to:
 2025-04-22 10:57:29.671  INFO 25603 --- [nio-8080-exec-9] MockHttpServerApplication$MockController : Completed request #7573: Status 200 - Response time: 67ms
 2025-04-22 10:57:29.678  INFO 25603 --- [nio-8080-exec-3] MockHttpServerApplication$MockController : Completed request #7574: Status 200 - Response time: 68ms
 ```
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
