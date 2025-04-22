@@ -6,6 +6,8 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 
 
 
+
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -24,6 +26,8 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
   - [Reset Statistics](#reset-statistics)
 - [Using with TPS Generator](#using-with-tps-generator)
 - [Examples](#examples)
+
+
 
 ## Overview
 
@@ -184,38 +188,7 @@ The Mock HTTP Server integrates perfectly with the TPS Generator for comprehensi
 4. Run your load tests
 5. Analyze both client-side (TPS Generator) and server-side (Mock Server) metrics
 
-Example TPS Generator configuration to use with the mock server:
-
-```json
-{
-  "name": "Mock API Load Test",
-  "targetServiceUrl": "http://localhost:8080",
-  "testDuration": "5m",
-  
-  "trafficPattern": {
-    "type": "rampUp",
-    "startTps": 10,
-    "targetTps": 100,
-    "rampDuration": "1m"
-  },
-  
-  "requestTemplates": [
-    {
-      "name": "getUserProfile",
-      "weight": 70,
-      "method": "GET",
-      "urlTemplate": "http://localhost:8080/users/${userId}"
-    },
-    {
-      "name": "createOrder",
-      "weight": 30,
-      "method": "POST",
-      "urlTemplate": "http://localhost:8080/orders",
-      "bodyTemplate": "{\"productId\":\"${productId}\",\"quantity\":${quantity}}"
-    }
-  ]
-}
-```
+An example TPS Generator configuration to use with the mock server can be found here: https://github.com/monahand1023/TPSGenerator/?tab=readme-ov-file#configuration
 
 ## Examples
 
@@ -226,6 +199,8 @@ Example TPS Generator configuration to use with the mock server:
 ```bash
 curl -X POST http://localhost:8080/admin/config/users -H "Content-Type: application/json" -d '{
   "minDelay": 20,
+
+
   "maxDelay": 100,
   "errorRate": 0.01,
   "responseHeaders": {
@@ -239,6 +214,10 @@ curl -X POST http://localhost:8080/admin/config/users -H "Content-Type: applicat
 
 ```bash
 curl -X POST http://localhost:8080/admin/config/orders -H "Content-Type: application/json" -d '{
+
+
+
+
 
 
   "minDelay": 100,
