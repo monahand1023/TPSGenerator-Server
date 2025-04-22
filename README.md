@@ -1,6 +1,6 @@
 # TPS Generator Server
 
-A configurable mock HTTP server for simulating API behavior with controlled response times, error rates, and custom responses. Perfect companion for the TPS Generator load testing tool, found here: https://github.com/monahand1023/TPSGenerator
+A configurable mock HTTP server for simulating API behavior with controlled response times, error rates, and custom responses. This is the companion for the TPS Generator load testing tool, found here: https://github.com/monahand1023/TPSGenerator
 
 
 
