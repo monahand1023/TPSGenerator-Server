@@ -7,23 +7,30 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Overview](#overview)
 - [Features](#features)
 - [Getting Started](#getting-started)
-
-
   - [Prerequisites](#prerequisites)
-
-
   - [Building and Running](#building-and-running)
 - [Configuration](#configuration)
+  - [Application Properties](#application-properties)
   - [Endpoint Configuration](#endpoint-configuration)
   - [Default Settings](#default-settings)
 - [Admin API](#admin-api)
   - [Configure Endpoints](#configure-endpoints)
   - [Get Endpoint Configuration](#get-endpoint-configuration)
+  - [List All Endpoints](#list-all-endpoints)
+  - [Delete Endpoint Configuration](#delete-endpoint-configuration)
+  - [Clear All Configurations](#clear-all-configurations)
   - [Configure Defaults](#configure-defaults)
+  - [Get Current Defaults](#get-current-defaults)
   - [View Statistics](#view-statistics)
   - [Reset Statistics](#reset-statistics)
+  - [Persistence](#persistence)
+- [API Versioning](#api-versioning)
+- [Monitoring](#monitoring)
+  - [Health Checks](#health-checks)
+  - [Metrics](#metrics)
 - [Using with TPS Generator](#using-with-tps-generator)
 - [Examples](#examples)
+- [Project Structure](#project-structure)
 
 ## Overview
 
@@ -40,6 +47,12 @@ The server lets you configure how each endpoint behaves, including response time
 - **Statistics Tracking**: Monitor request counts, success/failure rates in real-time
 - **Admin API**: Manage configuration and view statistics through a REST API
 - **Request Logging**: Detailed logging of requests and responses
+- **API Versioning**: Versioned API endpoints (`/api/v1/admin/*`)
+- **Configuration Persistence**: Save and load endpoint configurations to/from disk
+- **Health Checks**: Spring Boot Actuator health endpoints with custom indicators
+- **Metrics Integration**: Micrometer metrics for Prometheus and other monitoring systems
+- **Path Normalization**: Case-insensitive endpoint matching with trailing slash handling
+- **Memory Management**: LRU cache with configurable limits to prevent unbounded memory growth
 
 ## Getting Started
 
@@ -70,14 +83,34 @@ java -jar target/mock-http-server-1.0.0.jar --server.port=9090
 
 ## Configuration
 
+### Application Properties
 
+Configure the server via `application.properties` or environment variables:
+
+```properties
+# Default endpoint behavior
+mock-server.default-min-delay=10
+mock-server.default-max-delay=100
+mock-server.default-error-rate=0.0
+
+# Statistics logging interval (milliseconds)
+mock-server.stats-log-interval-ms=10000
+
+# Configuration persistence
+mock-server.persistence.enabled=false
+mock-server.persistence.file-path=./mock-server-config.json
+
+# Actuator endpoints
+management.endpoints.web.exposure.include=health,info,metrics,prometheus
+management.endpoint.health.show-details=always
+```
 
 ### Endpoint Configuration
 
 You can configure each endpoint with the following parameters:
 
-- `minDelay`: Minimum response time in milliseconds
-- `maxDelay`: Maximum response time in milliseconds
+- `minDelay`: Minimum response time in milliseconds (must be >= 0)
+- `maxDelay`: Maximum response time in milliseconds (must be >= minDelay)
 - `errorRate`: Probability of returning an error (0.0 to 1.0)
 - `responseHeaders`: Custom headers to include in responses
 - `responseMessage`: Custom message in the response body
@@ -95,6 +128,11 @@ Example configuration:
   "responseMessage": "This is a custom response"
 }
 ```
+
+**Path Normalization**: Endpoint paths are normalized for consistent matching:
+- Leading and trailing slashes are removed
+- Matching is case-insensitive
+- Example: `/API/Users/`, `api/users`, and `API/USERS` all match the same endpoint
 
 ### Default Settings
 
@@ -130,6 +168,15 @@ Request body:
 }
 ```
 
+Response:
+```json
+{
+  "status": "success",
+  "message": "Endpoint configured: /users",
+  "config": { ... }
+}
+```
+
 ### Get Endpoint Configuration
 
 Retrieve the configuration for a specific endpoint:
@@ -138,12 +185,89 @@ Retrieve the configuration for a specific endpoint:
 GET /admin/config/{path}
 ```
 
+Returns `404 Not Found` if the endpoint is not configured.
+
+### List All Endpoints
+
+Get all configured endpoints:
+
+```
+GET /admin/config
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "endpoints": {
+    "users": { ... },
+    "orders": { ... }
+  },
+  "count": 2
+}
+```
+
+### Delete Endpoint Configuration
+
+Delete a specific endpoint configuration:
+
+```
+DELETE /admin/config/{path}
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "Endpoint configuration deleted: /users"
+}
+```
+
+Returns `404 Not Found` if the endpoint doesn't exist.
+
+### Clear All Configurations
+
+Delete all endpoint configurations:
+
+```
+DELETE /admin/config
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "message": "All endpoint configurations cleared",
+  "deletedCount": 5
+}
+```
+
 ### Configure Defaults
 
 Set default behavior for all unconfigured endpoints:
 
 ```
 POST /admin/defaults?minDelay=20&maxDelay=150&errorRate=0.02
+```
+
+All parameters are optional - only provided values will be updated.
+
+### Get Current Defaults
+
+Retrieve current default settings:
+
+```
+GET /admin/defaults
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "defaultMinDelay": 10,
+  "defaultMaxDelay": 100,
+  "defaultErrorRate": 0.0
+}
 ```
 
 ### View Statistics
@@ -157,6 +281,7 @@ GET /admin/stats
 Response:
 ```json
 {
+  "status": "success",
   "totalRequests": 1000,
   "successfulRequests": 950,
   "failedRequests": 50,
@@ -171,6 +296,84 @@ Reset all server statistics:
 ```
 POST /admin/stats/reset
 ```
+
+### Persistence
+
+Save and load endpoint configurations to/from disk.
+
+**Check persistence status:**
+```
+GET /admin/persistence/status
+```
+
+**Save current configurations:**
+```
+POST /admin/persistence/save
+```
+
+**Load configurations from file:**
+```
+POST /admin/persistence/load
+```
+
+Note: Persistence must be enabled in `application.properties` for save/load operations to work.
+
+## API Versioning
+
+All admin endpoints are available with a versioned prefix:
+
+| Standard Endpoint | Versioned Endpoint |
+|-------------------|-------------------|
+| `/admin/config/{path}` | `/api/v1/admin/config/{path}` |
+| `/admin/config` | `/api/v1/admin/config` |
+| `/admin/defaults` | `/api/v1/admin/defaults` |
+| `/admin/stats` | `/api/v1/admin/stats` |
+| `/admin/stats/reset` | `/api/v1/admin/stats/reset` |
+| `/admin/persistence/*` | `/api/v1/admin/persistence/*` |
+
+## Monitoring
+
+### Health Checks
+
+The server exposes Spring Boot Actuator health endpoints:
+
+```
+GET /actuator/health
+```
+
+Response:
+```json
+{
+  "status": "UP",
+  "components": {
+    "diskSpace": { "status": "UP" },
+    "mockServer": {
+      "status": "UP",
+      "details": {
+        "configuredEndpoints": 5,
+        "totalRequests": 1000,
+        "successRate": 95.0
+      }
+    },
+    "ping": { "status": "UP" }
+  }
+}
+```
+
+### Metrics
+
+Micrometer metrics are exposed for monitoring systems:
+
+```
+GET /actuator/metrics
+GET /actuator/prometheus
+```
+
+Available custom metrics:
+- `mock_server_requests_total` - Total requests received
+- `mock_server_requests_success_total` - Successful requests
+- `mock_server_requests_failed_total` - Failed requests
+- `mock_server_configured_endpoints` - Number of configured endpoints
 
 ## Using with TPS Generator
 
@@ -191,75 +394,83 @@ An example TPS Generator configuration to use with the mock server can be found 
 1. Configure the `/users` endpoint with normal behavior:
 
 ```bash
-curl -X POST http://localhost:8080/admin/config/users -H "Content-Type: application/json" -d '{
-  "minDelay": 20,
-
-
-  "maxDelay": 100,
-  "errorRate": 0.01,
-  "responseHeaders": {
-    "Content-Type": "application/json"
-  },
-  "responseMessage": "User profile data"
-}'
+curl -X POST http://localhost:8080/admin/config/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "minDelay": 20,
+    "maxDelay": 100,
+    "errorRate": 0.01,
+    "responseHeaders": {"Content-Type": "application/json"},
+    "responseMessage": "User profile data"
+  }'
 ```
 
 2. Configure the `/orders` endpoint with higher latency:
 
 ```bash
-curl -X POST http://localhost:8080/admin/config/orders -H "Content-Type: application/json" -d '{
-  "minDelay": 100,
-  "maxDelay": 500,
-  "errorRate": 0.05,
-  "responseHeaders": {
-    "Content-Type": "application/json"
-  },
-  "responseMessage": "Order created successfully"
-}'
+curl -X POST http://localhost:8080/admin/config/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "minDelay": 100,
+    "maxDelay": 500,
+    "errorRate": 0.05,
+    "responseHeaders": {"Content-Type": "application/json"},
+    "responseMessage": "Order created successfully"
+  }'
 ```
 
 3. Configure the `/search` endpoint with occasional timeouts:
 
 ```bash
-curl -X POST http://localhost:8080/admin/config/search -H "Content-Type: application/json" -d '{
-  "minDelay": 200,
-  "maxDelay": 2000,
-  "errorRate": 0.1,
-  "responseHeaders": {
-    "Content-Type": "application/json"
-  },
-  "responseMessage": "Search results"
-}'
+curl -X POST http://localhost:8080/admin/config/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "minDelay": 200,
+    "maxDelay": 2000,
+    "errorRate": 0.1,
+    "responseHeaders": {"Content-Type": "application/json"},
+    "responseMessage": "Search results"
+  }'
 ```
 
-4. Run your load test with TPS Generator targeting these endpoints and observe how your system handles the different response characteristics.
+4. Save configurations for later:
 
-This setup allows you to:
-- Simulate realistic API behavior
-- Test how your application handles varying response times
-- Validate error handling
-- Analyze performance under different load patterns
+```bash
+curl -X POST http://localhost:8080/admin/persistence/save
+```
 
-## Sample Console Output
+5. View current statistics:
+
+```bash
+curl http://localhost:8080/admin/stats
+```
+
+6. Check server health:
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+## Project Structure
 
 ```
-2025-04-22 10:57:29.574  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Completed request #7566: Status 200 - Response time: 47ms
-2025-04-22 10:57:29.577  INFO 25603 --- [nio-8080-exec-7] MockHttpServerApplication$MockController : Received request #7571: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
-2025-04-22 10:57:29.585  INFO 25603 --- [nio-8080-exec-4] MockHttpServerApplication$MockController : Completed request #7569: Status 200 - Response time: 27ms
-2025-04-22 10:57:29.585  INFO 25603 --- [nio-8080-exec-4] MockHttpServerApplication$MockController : Received request #7572: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
-2025-04-22 10:57:29.592  INFO 25603 --- [nio-8080-exec-2] MockHttpServerApplication$MockController : Completed request #7568: Status 200 - Response time: 44ms
-2025-04-22 10:57:29.598  INFO 25603 --- [nio-8080-exec-4] MockHttpServerApplication$MockController : Completed request #7572: Status 200 - Response time: 12ms
-2025-04-22 10:57:29.598  INFO 25603 --- [nio-8080-exec-9] MockHttpServerApplication$MockController : Received request #7573: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
-2025-04-22 10:57:29.605  INFO 25603 --- [nio-8080-exec-6] MockHttpServerApplication$MockController : Completed request #7564: Status 200 - Response time: 97ms
-2025-04-22 10:57:29.605  INFO 25603 --- [nio-8080-exec-3] MockHttpServerApplication$MockController : Received request #7574: POST /orders - Headers: {connection=Upgrade, HTTP2-Settings, content-length=32, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, authorization=Bearer token123, content-type=application/json}
-2025-04-22 10:57:29.613  INFO 25603 --- [nio-8080-exec-7] MockHttpServerApplication$MockController : Completed request #7571: Status 200 - Response time: 31ms
-2025-04-22 10:57:29.616  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Received request #7575: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
-2025-04-22 10:57:29.622  INFO 25603 --- [io-8080-exec-10] MockHttpServerApplication$MockController : Completed request #7567: Status 200 - Response time: 84ms
-2025-04-22 10:57:29.648  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Completed request #7575: Status 200 - Response time: 30ms
-2025-04-22 10:57:29.649  INFO 25603 --- [nio-8080-exec-8] MockHttpServerApplication$MockController : Received request #7576: GET /resources - Headers: {connection=Upgrade, HTTP2-Settings, host=localhost:8080, http2-settings=AAEAAEAAAAIAAAAAAAMAAAAAAAQBAAAAAAUAAEAAAAYABgAA, upgrade=h2c, user-agent=Java-http-client/21.0.6, accept=application/json, authorization=Bearer token123}
-2025-04-22 10:57:29.666  INFO 25603 --- [nio-8080-exec-5] MockHttpServerApplication$MockController : Completed request #7570: Status 200 - Response time: 97ms
-2025-04-22 10:57:29.671  INFO 25603 --- [nio-8080-exec-9] MockHttpServerApplication$MockController : Completed request #7573: Status 200 - Response time: 67ms
-2025-04-22 10:57:29.678  INFO 25603 --- [nio-8080-exec-3] MockHttpServerApplication$MockController : Completed request #7574: Status 200 - Response time: 68ms
+src/main/java/io/kunkun/mockserver/
+  MockHttpServerApplication.java        # Application entry point
+  config/
+    MockServerProperties.java           # Configuration properties
+  controller/
+    AdminController.java                # Admin API endpoints
+    MockRequestController.java          # Mock request handling
+    GlobalExceptionHandler.java         # Error handling
+  dto/
+    MockEndpointConfig.java             # Endpoint configuration DTO
+    ApiResponse.java                    # Response builder
+  service/
+    MockEndpointService.java            # Endpoint management
+    StatisticsService.java              # Statistics tracking
+    ConfigurationPersistenceService.java # Config persistence
+  health/
+    MockServerHealthIndicator.java      # Custom health checks
 ```
 
 ## License
