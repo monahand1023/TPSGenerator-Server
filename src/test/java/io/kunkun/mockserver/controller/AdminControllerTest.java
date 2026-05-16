@@ -8,17 +8,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.HashMap;
 
 import static org.hamcrest.Matchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class AdminControllerTest {
+
+    private static final String ADMIN_USER = "testadmin";
+    private static final String ADMIN_PASS = "testpassword";
 
     @Autowired
     private MockMvc mockMvc;
@@ -335,12 +341,13 @@ class AdminControllerTest {
         MockEndpointConfig config = new MockEndpointConfig(10, 100, 0.0, new HashMap<>(), "Versioned");
 
         mockMvc.perform(post("/api/v1/admin/config/versioned-test")
+                        .with(httpBasic(ADMIN_USER, ADMIN_PASS))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(config)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
 
-        // Verify via non-versioned endpoint
+        // Verify via non-versioned endpoint (unprotected)
         mockMvc.perform(get("/admin/config/versioned-test"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.responseMessage").value("Versioned"));
@@ -348,8 +355,32 @@ class AdminControllerTest {
 
     @Test
     void versionedEndpoint_getStats_works() throws Exception {
-        mockMvc.perform(get("/api/v1/admin/stats"))
+        mockMvc.perform(get("/api/v1/admin/stats")
+                        .with(httpBasic(ADMIN_USER, ADMIN_PASS)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    // ========== Security Tests ==========
+
+    @Test
+    void adminEndpoint_withoutAuth_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/config"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminEndpoint_withValidAuth_returnsSuccess() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/config")
+                        .with(httpBasic(ADMIN_USER, ADMIN_PASS)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"));
+    }
+
+    @Test
+    void adminEndpoint_withWrongPassword_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/config")
+                        .with(httpBasic(ADMIN_USER, "wrongpassword")))
+                .andExpect(status().isUnauthorized());
     }
 }

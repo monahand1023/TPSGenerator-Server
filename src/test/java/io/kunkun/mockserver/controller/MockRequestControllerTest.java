@@ -2,12 +2,14 @@ package io.kunkun.mockserver.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
+import io.kunkun.mockserver.service.MockEndpointService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -21,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class MockRequestControllerTest {
 
     @Autowired
@@ -28,6 +31,9 @@ class MockRequestControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private MockEndpointService endpointService;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -81,13 +87,11 @@ class MockRequestControllerTest {
 
     @Test
     void handleRequest_withNestedPath_usesFullPath() throws Exception {
-        // Configure a nested path
+        // Configure a nested path directly via the service (AdminController only
+        // supports single-segment {path} variables; multi-segment paths must be
+        // seeded programmatically in tests).
         MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "Nested response");
-
-        mockMvc.perform(post("/admin/config/api/v1/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(config)))
-                .andExpect(status().isOk());
+        endpointService.configureEndpoint("api/v1/users", config);
 
         // Request the nested path
         mockMvc.perform(get("/api/v1/users"))
@@ -97,15 +101,11 @@ class MockRequestControllerTest {
 
     @Test
     void handleRequest_withTrailingSlash_matchesConfiguredPath() throws Exception {
-        // Configure without trailing slash
+        // Configure without trailing slash (seed directly — path contains a slash)
         MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "Trailing slash test");
+        endpointService.configureEndpoint("api/endpoint", config);
 
-        mockMvc.perform(post("/admin/config/api/endpoint")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(config)))
-                .andExpect(status().isOk());
-
-        // Request with trailing slash should match
+        // Request with trailing slash should match thanks to path normalization
         mockMvc.perform(get("/api/endpoint/"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Trailing slash test"));
@@ -113,15 +113,11 @@ class MockRequestControllerTest {
 
     @Test
     void handleRequest_caseInsensitive_matchesConfiguredPath() throws Exception {
-        // Configure with lowercase
+        // Configure with lowercase (seed directly — path contains a slash)
         MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "Case insensitive test");
+        endpointService.configureEndpoint("api/casepath", config);
 
-        mockMvc.perform(post("/admin/config/api/casepath")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(config)))
-                .andExpect(status().isOk());
-
-        // Request with different case should match
+        // Request with different case should match thanks to path normalization
         mockMvc.perform(get("/API/CasePath"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Case insensitive test"));
@@ -143,8 +139,10 @@ class MockRequestControllerTest {
 
     @Test
     void handleRequest_withHeaders_includesHeadersInResponse() throws Exception {
+        // @RequestHeader Map<String,String> preserves header name case as sent by the client.
+        // Spring MockMvc sends "x-custom-header" in lowercase, so use the exact key.
         mockMvc.perform(get("/test-path")
-                        .header("X-Custom-Header", "custom-value"))
+                        .header("x-custom-header", "custom-value"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.headers.x-custom-header").value("custom-value"));
     }

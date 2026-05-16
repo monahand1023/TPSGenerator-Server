@@ -36,3 +36,7 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Mock endpoint persistence ###
+mock-endpoints.json
+mock-endpoints.json.tmp

@@ -28,6 +28,8 @@ class ConfigurationPersistenceServiceTest {
     void setUp() {
         properties = new MockServerProperties();
         endpointService = new MockEndpointService(properties);
+        // Redirect inline persistence to temp dir so tests are hermetic
+        endpointService.setConfigFilePath(tempDir.resolve("mock-endpoints.json").toString());
 
         configFile = tempDir.resolve("test-config.json").toFile();
         properties.getPersistence().setFilePath(configFile.getAbsolutePath());

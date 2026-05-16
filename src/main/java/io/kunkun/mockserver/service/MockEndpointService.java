@@ -1,17 +1,28 @@
 package io.kunkun.mockserver.service;
 
-import com.github.ben-manes.caffeine.cache.Cache;
-import com.github.ben-manes.caffeine.cache.Caffeine;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.kunkun.mockserver.config.MockServerProperties;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class MockEndpointService {
@@ -39,6 +50,14 @@ public class MockEndpointService {
     // Immutable defaults holder to prevent race conditions
     private final AtomicReference<DefaultConfig> defaults;
 
+    @Value("${mock.config.file:mock-endpoints.json}")
+    private String configFilePath;
+
+    private final ObjectMapper objectMapper;
+
+    /** Serializes concurrent calls to persistToFile so the .tmp file is never written by two threads at once. */
+    private final ReentrantLock persistLock = new ReentrantLock();
+
     public MockEndpointService(MockServerProperties properties) {
         this.properties = properties;
         this.defaults = new AtomicReference<>(new DefaultConfig(
@@ -46,6 +65,43 @@ public class MockEndpointService {
                 properties.getDefaultMaxDelay(),
                 properties.getDefaultErrorRate()
         ));
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        // Default configFilePath for non-Spring contexts (unit tests); overridden by @Value in Spring context
+        this.configFilePath = "mock-endpoints.json";
+    }
+
+    /** Package-private setter to allow unit tests to redirect file I/O to a temp path. */
+    void setConfigFilePath(String configFilePath) {
+        this.configFilePath = configFilePath;
+    }
+
+    @PostConstruct
+    public void loadFromFile() {
+        File file = new File(configFilePath);
+        if (!file.exists()) {
+            logger.info("No mock-endpoint config file found at: {}", file.getAbsolutePath());
+            return;
+        }
+
+        try {
+            Map<String, MockEndpointConfig> configs = objectMapper.readValue(
+                    file, new TypeReference<Map<String, MockEndpointConfig>>() {});
+            int loaded = 0;
+            for (Map.Entry<String, MockEndpointConfig> entry : configs.entrySet()) {
+                try {
+                    entry.getValue().validate();
+                    endpointConfigs.put(entry.getKey(), entry.getValue());
+                    loaded++;
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Skipping invalid config for path '{}': {}", entry.getKey(), e.getMessage());
+                }
+            }
+            logger.info("Loaded {} endpoint configs from: {}", loaded, file.getAbsolutePath());
+        } catch (IOException e) {
+            logger.warn("Could not read mock-endpoint config file '{}', starting empty: {}",
+                    file.getAbsolutePath(), e.getMessage());
+        }
     }
 
     /**
@@ -81,6 +137,7 @@ public class MockEndpointService {
         config.validate();
         String normalizedPath = normalizePath(path);
         endpointConfigs.put(normalizedPath, config);
+        persistToFile();
     }
 
     public Optional<MockEndpointConfig> getEndpointConfig(String path) {
@@ -114,6 +171,7 @@ public class MockEndpointService {
      */
     public void clearAllConfigurations() {
         endpointConfigs.invalidateAll();
+        persistToFile();
     }
 
     /**
@@ -125,7 +183,42 @@ public class MockEndpointService {
         String normalizedPath = normalizePath(path);
         boolean existed = endpointConfigs.getIfPresent(normalizedPath) != null;
         endpointConfigs.invalidate(normalizedPath);
+        persistToFile();
         return existed;
+    }
+
+    /**
+     * Serializes the full cache snapshot to the configured JSON file.
+     * Writes to a .tmp file first, then renames for near-atomic replacement.
+     * Falls back to a non-atomic replace if ATOMIC_MOVE is unsupported
+     * (e.g. when source and target are on different filesystems).
+     * Uses a lock so concurrent write operations don't collide on the .tmp file.
+     */
+    private void persistToFile() {
+        persistLock.lock();
+        try {
+            File target = new File(configFilePath);
+            File tmp = new File(configFilePath + ".tmp");
+
+            File parentDir = target.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+            Map<String, MockEndpointConfig> snapshot = new HashMap<>(endpointConfigs.asMap());
+            objectMapper.writeValue(tmp, snapshot);
+            try {
+                Files.move(tmp.toPath(), target.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ex) {
+                // Fall back to non-atomic replace when crossing filesystem boundaries
+                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            File target = new File(configFilePath);
+            logger.warn("Failed to persist mock-endpoint configs to '{}': {}", target.getAbsolutePath(), e.getMessage());
+        } finally {
+            persistLock.unlock();
+        }
     }
 
     public MockEndpointConfig createDefaultConfig() {

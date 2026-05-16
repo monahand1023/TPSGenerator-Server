@@ -7,17 +7,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.HashMap;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class GlobalExceptionHandlerTest {
+
+    private static final String ADMIN_USER = "testadmin";
+    private static final String ADMIN_PASS = "testpassword";
 
     @Autowired
     private MockMvc mockMvc;
@@ -104,6 +110,7 @@ class GlobalExceptionHandlerTest {
         MockEndpointConfig config = new MockEndpointConfig(200, 100, 0.1, new HashMap<>(), "Test");
 
         mockMvc.perform(post("/api/v1/admin/config/test-path")
+                        .with(httpBasic(ADMIN_USER, ADMIN_PASS))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(config)))
                 .andExpect(status().isBadRequest())

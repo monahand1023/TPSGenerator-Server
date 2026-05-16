@@ -4,7 +4,9 @@ import io.kunkun.mockserver.config.MockServerProperties;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -16,6 +18,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MockEndpointServiceTest {
 
+    @TempDir
+    Path tempDir;
+
     private MockEndpointService service;
     private MockServerProperties properties;
 
@@ -26,6 +31,8 @@ class MockEndpointServiceTest {
         properties.setDefaultMaxDelay(100);
         properties.setDefaultErrorRate(0.0);
         service = new MockEndpointService(properties);
+        // Redirect file I/O to temp dir so tests are hermetic
+        service.setConfigFilePath(tempDir.resolve("mock-endpoints.json").toString());
     }
 
     // ========== Path Normalization Tests ==========
@@ -287,5 +294,70 @@ class MockEndpointServiceTest {
         assertTrue(config.isPresent());
         assertEquals("Updated", config.get().getResponseMessage());
         assertEquals(20, config.get().getMinDelay());
+    }
+
+    // ========== File-Based Persistence Tests ==========
+
+    @Test
+    void filePersistence_writtenConfigsSurviveRestart() {
+        String configFile = tempDir.resolve("persist-test.json").toString();
+        service.setConfigFilePath(configFile);
+
+        // Write 3 configs
+        service.configureEndpoint("persist/alpha",
+                new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Alpha"));
+        service.configureEndpoint("persist/beta",
+                new MockEndpointConfig(20, 60, 0.1, new HashMap<>(), "Beta"));
+        service.configureEndpoint("persist/gamma",
+                new MockEndpointConfig(30, 70, 0.2, new HashMap<>(), "Gamma"));
+
+        assertEquals(3, service.getConfiguredEndpointCount());
+
+        // Simulate restart: create a fresh service instance pointing at the same file
+        MockEndpointService reloaded = new MockEndpointService(properties);
+        reloaded.setConfigFilePath(configFile);
+        reloaded.loadFromFile();
+
+        // All 3 configs must be present in the new instance
+        assertEquals(3, reloaded.getConfiguredEndpointCount());
+        assertTrue(reloaded.getEndpointConfig("persist/alpha").isPresent());
+        assertEquals("Alpha", reloaded.getEndpointConfig("persist/alpha").get().getResponseMessage());
+        assertTrue(reloaded.getEndpointConfig("persist/beta").isPresent());
+        assertEquals("Beta", reloaded.getEndpointConfig("persist/beta").get().getResponseMessage());
+        assertTrue(reloaded.getEndpointConfig("persist/gamma").isPresent());
+        assertEquals("Gamma", reloaded.getEndpointConfig("persist/gamma").get().getResponseMessage());
+    }
+
+    @Test
+    void filePersistence_malformedFileLogs_andStartsEmpty() throws Exception {
+        String configFile = tempDir.resolve("bad.json").toString();
+        java.nio.file.Files.writeString(java.nio.file.Path.of(configFile), "{ this is not valid json }}}");
+
+        MockEndpointService fresh = new MockEndpointService(properties);
+        fresh.setConfigFilePath(configFile);
+
+        // Should not throw; should start with an empty cache
+        assertDoesNotThrow(() -> fresh.loadFromFile());
+        assertEquals(0, fresh.getConfiguredEndpointCount());
+    }
+
+    @Test
+    void filePersistence_deleteEndpoint_updatesFile() {
+        String configFile = tempDir.resolve("delete-test.json").toString();
+        service.setConfigFilePath(configFile);
+
+        service.configureEndpoint("keep/me", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Keep"));
+        service.configureEndpoint("delete/me", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Delete"));
+
+        service.deleteEndpoint("delete/me");
+
+        // Reload from file and verify deletion persisted
+        MockEndpointService reloaded = new MockEndpointService(properties);
+        reloaded.setConfigFilePath(configFile);
+        reloaded.loadFromFile();
+
+        assertEquals(1, reloaded.getConfiguredEndpointCount());
+        assertTrue(reloaded.getEndpointConfig("keep/me").isPresent());
+        assertFalse(reloaded.getEndpointConfig("delete/me").isPresent());
     }
 }
