@@ -10,7 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -39,9 +39,12 @@ public class MockRequestController {
         long requestId = statisticsService.incrementAndGetRequestId();
         statisticsService.recordRequest();
 
-        // Log incoming request
-        logger.info("Received request #{}: {} {} - Headers: {}",
-                requestId, request.getMethod(), request.getRequestURI(), headers);
+        // Log incoming request — sanitize URI to prevent log injection
+        String safeUri = request.getRequestURI()
+                .replace("\r", "\\r")
+                .replace("\n", "\\n");
+        logger.info("Received request #{}: {} {} - Headers count: {}",
+                requestId, request.getMethod(), safeUri, headers.size());
 
         // Extract full path from URI (fixes bug where only first segment was used)
         String fullPath = request.getRequestURI();

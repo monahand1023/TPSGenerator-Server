@@ -32,6 +32,10 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Examples](#examples)
 - [Project Structure](#project-structure)
 
+## Security Warning
+
+**The Admin API has no authentication.** It must only be deployed on a trusted internal network or behind an authentication proxy. **Never expose the `/admin/*` or `/api/v1/admin/*` endpoints to the public internet.** An unauthenticated caller can change all endpoint behaviors, reset statistics, or overwrite persisted configurations.
+
 ## Overview
 
 This Mock HTTP Server provides a flexible environment for simulating API behavior during load and performance testing. It works seamlessly with the TPS Generator to create realistic testing scenarios with controlled response characteristics.
@@ -58,7 +62,7 @@ The server lets you configure how each endpoint behaves, including response time
 
 ### Prerequisites
 
-- Java 11 or higher
+- Java 17 or higher (Spring Boot 3.x requires Java 17+)
 - Maven 3.6 or higher
 
 ### Building and Running
@@ -362,7 +366,7 @@ Response:
 
 ### Metrics
 
-Micrometer metrics are exposed for monitoring systems:
+Micrometer metrics are exposed for monitoring systems. The `micrometer-registry-prometheus` dependency is included so Prometheus metrics are available out of the box:
 
 ```
 GET /actuator/metrics
@@ -370,10 +374,12 @@ GET /actuator/prometheus
 ```
 
 Available custom metrics:
-- `mock_server_requests_total` - Total requests received
-- `mock_server_requests_success_total` - Successful requests
-- `mock_server_requests_failed_total` - Failed requests
-- `mock_server_configured_endpoints` - Number of configured endpoints
+- `mock_server_requests_total` - Lifetime total requests received (monotonically increasing, correct Prometheus counter semantics)
+- `mock_server_requests_successful` - Lifetime successful requests
+- `mock_server_requests_failed` - Lifetime failed requests
+- `mock_server_request_duration` - Request processing time (timer)
+- `mock_server_success_rate` - Current success rate, resets with `/admin/stats/reset` (gauge)
+- `mock_server_requests_current_total` - Current total requests, resettable (gauge)
 
 ## Using with TPS Generator
 
@@ -466,12 +472,17 @@ src/main/java/io/kunkun/mockserver/
     MockEndpointConfig.java             # Endpoint configuration DTO
     ApiResponse.java                    # Response builder
   service/
-    MockEndpointService.java            # Endpoint management
+    MockEndpointService.java            # Endpoint management (Caffeine LRU cache)
     StatisticsService.java              # Statistics tracking
     ConfigurationPersistenceService.java # Config persistence
   health/
     MockServerHealthIndicator.java      # Custom health checks
 ```
+
+## Framework Notes
+
+- **Spring Boot 3.x** — uses the Jakarta EE 10 namespace (`jakarta.*`). All Java EE/`javax.*` imports have been migrated.
+- **Caffeine LRU cache** — `MockEndpointService` uses Caffeine instead of `LinkedHashMap` + `ReentrantReadWriteLock`. The old implementation had a concurrency bug: access-order `LinkedHashMap.get()` mutates internal state and is not safe under a shared read lock. Caffeine provides correct concurrent LRU semantics.
 
 ## License
 

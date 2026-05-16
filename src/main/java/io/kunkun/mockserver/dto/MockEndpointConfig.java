@@ -1,10 +1,26 @@
 package io.kunkun.mockserver.dto;
 
-import javax.validation.constraints.Max;
-import javax.validation.constraints.Min;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Configuration for a mock endpoint.
+ *
+ * Validation uses JSR-380 (Bean Validation) annotations throughout:
+ * - Field-level constraints (@Min, @Max) catch simple range violations
+ * - @AssertTrue covers the cross-field constraint (minDelay <= maxDelay)
+ * - The controller boundary has @Valid + @Validated so all constraints are
+ *   enforced before any service method is called
+ *
+ * The manual validate() method and setter guards have been removed; they
+ * duplicated the same logic in a less composable, harder-to-test way. The
+ * remaining validate() call in MockEndpointService.configureEndpoint() is
+ * kept as a defence-in-depth check for programmatic (non-HTTP) callers.
+ */
 public class MockEndpointConfig {
 
     @Min(value = 0, message = "minDelay must be non-negative")
@@ -34,8 +50,18 @@ public class MockEndpointConfig {
     }
 
     /**
-     * Validates the configuration values.
-     * @throws IllegalArgumentException if validation fails
+     * Cross-field constraint: minDelay must not exceed maxDelay.
+     * The @JsonIgnore prevents this synthetic property appearing in serialized output.
+     */
+    @jakarta.validation.constraints.AssertTrue(message = "minDelay cannot exceed maxDelay")
+    @JsonIgnore
+    public boolean isDelayRangeValid() {
+        return minDelay <= maxDelay;
+    }
+
+    /**
+     * Validates this config programmatically (for callers that bypass the HTTP/Bean Validation layer).
+     * Throws IllegalArgumentException on the first violation found.
      */
     public void validate() {
         if (minDelay < 0) {
@@ -57,9 +83,6 @@ public class MockEndpointConfig {
     }
 
     public void setMinDelay(int minDelay) {
-        if (minDelay < 0) {
-            throw new IllegalArgumentException("minDelay must be non-negative");
-        }
         this.minDelay = minDelay;
     }
 
@@ -68,9 +91,6 @@ public class MockEndpointConfig {
     }
 
     public void setMaxDelay(int maxDelay) {
-        if (maxDelay < 0) {
-            throw new IllegalArgumentException("maxDelay must be non-negative");
-        }
         this.maxDelay = maxDelay;
     }
 
@@ -79,9 +99,6 @@ public class MockEndpointConfig {
     }
 
     public void setErrorRate(double errorRate) {
-        if (errorRate < 0.0 || errorRate > 1.0) {
-            throw new IllegalArgumentException("errorRate must be between 0.0 and 1.0");
-        }
         this.errorRate = errorRate;
     }
 

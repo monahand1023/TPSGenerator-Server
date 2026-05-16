@@ -1,5 +1,7 @@
 package io.kunkun.mockserver.service;
 
+import com.github.ben-manes.caffeine.cache.Cache;
+import com.github.ben-manes.caffeine.cache.Caffeine;
 import io.kunkun.mockserver.config.MockServerProperties;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
 import org.slf4j.Logger;
@@ -7,11 +9,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 @Service
 public class MockEndpointService {
@@ -21,9 +21,18 @@ public class MockEndpointService {
     // Maximum number of endpoint configurations to prevent unbounded memory growth
     private static final int MAX_ENDPOINT_CONFIGS = 10000;
 
-    // LRU cache for endpoint configs with bounded size
-    private final Map<String, MockEndpointConfig> endpointConfigs;
-    private final ReentrantReadWriteLock configLock = new ReentrantReadWriteLock();
+    /**
+     * Thread-safe LRU cache backed by Caffeine.
+     *
+     * Replaces the previous LinkedHashMap + ReentrantReadWriteLock implementation which had a
+     * concurrency bug: access-order LinkedHashMap.get() mutates internal state (moves the entry
+     * to the tail), making it unsafe under a shared read lock. Caffeine provides correct
+     * concurrent LRU semantics without any external locking.
+     */
+    private final Cache<String, MockEndpointConfig> endpointConfigs =
+            Caffeine.newBuilder()
+                    .maximumSize(MAX_ENDPOINT_CONFIGS)
+                    .build();
 
     private final MockServerProperties properties;
 
@@ -37,19 +46,6 @@ public class MockEndpointService {
                 properties.getDefaultMaxDelay(),
                 properties.getDefaultErrorRate()
         ));
-
-        // Create LRU cache with max size limit
-        this.endpointConfigs = new LinkedHashMap<String, MockEndpointConfig>(16, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<String, MockEndpointConfig> eldest) {
-                boolean shouldRemove = size() > MAX_ENDPOINT_CONFIGS;
-                if (shouldRemove) {
-                    logger.warn("Evicting oldest endpoint config '{}' due to max limit of {}",
-                            eldest.getKey(), MAX_ENDPOINT_CONFIGS);
-                }
-                return shouldRemove;
-            }
-        };
     }
 
     /**
@@ -84,48 +80,25 @@ public class MockEndpointService {
     public void configureEndpoint(String path, MockEndpointConfig config) {
         config.validate();
         String normalizedPath = normalizePath(path);
-
-        configLock.writeLock().lock();
-        try {
-            endpointConfigs.put(normalizedPath, config);
-        } finally {
-            configLock.writeLock().unlock();
-        }
+        endpointConfigs.put(normalizedPath, config);
     }
 
     public Optional<MockEndpointConfig> getEndpointConfig(String path) {
         String normalizedPath = normalizePath(path);
-
-        configLock.readLock().lock();
-        try {
-            return Optional.ofNullable(endpointConfigs.get(normalizedPath));
-        } finally {
-            configLock.readLock().unlock();
-        }
+        return Optional.ofNullable(endpointConfigs.getIfPresent(normalizedPath));
     }
 
     public MockEndpointConfig getEffectiveConfig(String path) {
         String normalizedPath = normalizePath(path);
-
-        configLock.readLock().lock();
-        try {
-            MockEndpointConfig config = endpointConfigs.get(normalizedPath);
-            return config != null ? config : createDefaultConfig();
-        } finally {
-            configLock.readLock().unlock();
-        }
+        MockEndpointConfig config = endpointConfigs.getIfPresent(normalizedPath);
+        return config != null ? config : createDefaultConfig();
     }
 
     /**
      * Returns the current number of configured endpoints.
      */
     public int getConfiguredEndpointCount() {
-        configLock.readLock().lock();
-        try {
-            return endpointConfigs.size();
-        } finally {
-            configLock.readLock().unlock();
-        }
+        return (int) endpointConfigs.estimatedSize();
     }
 
     /**
@@ -133,24 +106,14 @@ public class MockEndpointService {
      * Used for persistence and backup.
      */
     public Map<String, MockEndpointConfig> getAllConfigurations() {
-        configLock.readLock().lock();
-        try {
-            return new HashMap<>(endpointConfigs);
-        } finally {
-            configLock.readLock().unlock();
-        }
+        return new HashMap<>(endpointConfigs.asMap());
     }
 
     /**
      * Clears all endpoint configurations.
      */
     public void clearAllConfigurations() {
-        configLock.writeLock().lock();
-        try {
-            endpointConfigs.clear();
-        } finally {
-            configLock.writeLock().unlock();
-        }
+        endpointConfigs.invalidateAll();
     }
 
     /**
@@ -160,13 +123,9 @@ public class MockEndpointService {
      */
     public boolean deleteEndpoint(String path) {
         String normalizedPath = normalizePath(path);
-
-        configLock.writeLock().lock();
-        try {
-            return endpointConfigs.remove(normalizedPath) != null;
-        } finally {
-            configLock.writeLock().unlock();
-        }
+        boolean existed = endpointConfigs.getIfPresent(normalizedPath) != null;
+        endpointConfigs.invalidate(normalizedPath);
+        return existed;
     }
 
     public MockEndpointConfig createDefaultConfig() {

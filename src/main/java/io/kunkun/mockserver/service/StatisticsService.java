@@ -1,7 +1,6 @@
 package io.kunkun.mockserver.service;
 
-import io.kunkun.mockserver.dto.ApiResponse;
-import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.FunctionCounter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -10,38 +9,50 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Tracks request statistics and exposes them as Micrometer metrics.
+ *
+ * Counter semantics: Prometheus counters must be monotonically increasing and must
+ * not be reset. FunctionCounter wraps the AtomicLong values so Prometheus sees correct
+ * counter semantics (the gauge-based "resettable" counters are kept separately for the
+ * admin /stats endpoint which does support reset).
+ */
 @Service
 public class StatisticsService {
 
     private static final Logger logger = LoggerFactory.getLogger(StatisticsService.class);
 
+    // Resettable counters — source of truth for /admin/stats and the Gauge metrics below
     private final AtomicLong totalRequests = new AtomicLong(0);
     private final AtomicLong successfulRequests = new AtomicLong(0);
     private final AtomicLong failedRequests = new AtomicLong(0);
+
+    // Non-resettable lifetime counter for Prometheus FunctionCounters
+    private final AtomicLong lifetimeTotalRequests = new AtomicLong(0);
+    private final AtomicLong lifetimeSuccessfulRequests = new AtomicLong(0);
+    private final AtomicLong lifetimeFailedRequests = new AtomicLong(0);
+
     private final AtomicLong requestCounter = new AtomicLong(0);
 
-    // Micrometer metrics
-    private final Counter totalRequestsCounter;
-    private final Counter successfulRequestsCounter;
-    private final Counter failedRequestsCounter;
     private final Timer requestTimer;
 
     public StatisticsService(MeterRegistry meterRegistry) {
-        // Register counters
-        this.totalRequestsCounter = Counter.builder("mock_server_requests_total")
-                .description("Total number of mock requests received")
+        // FunctionCounter wraps the lifetime AtomicLongs — monotonically increasing, correct Prometheus semantics
+        FunctionCounter.builder("mock_server_requests_total", lifetimeTotalRequests, AtomicLong::doubleValue)
+                .description("Total number of mock requests received (lifetime, not reset on /stats/reset)")
                 .register(meterRegistry);
 
-        this.successfulRequestsCounter = Counter.builder("mock_server_requests_successful")
-                .description("Number of successful mock requests")
+        FunctionCounter.builder("mock_server_requests_successful", lifetimeSuccessfulRequests, AtomicLong::doubleValue)
+                .description("Number of successful mock requests (lifetime)")
                 .register(meterRegistry);
 
-        this.failedRequestsCounter = Counter.builder("mock_server_requests_failed")
-                .description("Number of failed mock requests (simulated errors)")
+        FunctionCounter.builder("mock_server_requests_failed", lifetimeFailedRequests, AtomicLong::doubleValue)
+                .description("Number of failed mock requests (lifetime)")
                 .register(meterRegistry);
 
         // Register timer for request processing
@@ -49,13 +60,13 @@ public class StatisticsService {
                 .description("Time taken to process mock requests")
                 .register(meterRegistry);
 
-        // Register gauges for current values
+        // Register gauges for resettable current values (useful for admin dashboards, not Prometheus)
         Gauge.builder("mock_server_success_rate", this, StatisticsService::calculateSuccessRate)
-                .description("Current success rate (0.0 to 1.0)")
+                .description("Current success rate (0.0 to 1.0), resets with /stats/reset")
                 .register(meterRegistry);
 
         Gauge.builder("mock_server_requests_current_total", totalRequests, AtomicLong::get)
-                .description("Current total requests (resettable)")
+                .description("Current total requests (resettable via /stats/reset)")
                 .register(meterRegistry);
 
         Gauge.builder("mock_server_requests_current_successful", successfulRequests, AtomicLong::get)
@@ -73,17 +84,17 @@ public class StatisticsService {
 
     public void recordRequest() {
         totalRequests.incrementAndGet();
-        totalRequestsCounter.increment();
+        lifetimeTotalRequests.incrementAndGet();
     }
 
     public void recordSuccess() {
         successfulRequests.incrementAndGet();
-        successfulRequestsCounter.increment();
+        lifetimeSuccessfulRequests.incrementAndGet();
     }
 
     public void recordFailure() {
         failedRequests.incrementAndGet();
-        failedRequestsCounter.increment();
+        lifetimeFailedRequests.incrementAndGet();
     }
 
     /**
@@ -94,26 +105,30 @@ public class StatisticsService {
         requestTimer.record(processingTimeMs, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Returns raw statistics as a domain map.
+     * The controller is responsible for wrapping this in an ApiResponse.
+     */
     public Map<String, Object> getStats() {
-        return ApiResponse.success()
-                .with("totalRequests", totalRequests.get())
-                .with("successfulRequests", successfulRequests.get())
-                .with("failedRequests", failedRequests.get())
-                .with("successRate", calculateSuccessRate())
-                .build();
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalRequests", totalRequests.get());
+        stats.put("successfulRequests", successfulRequests.get());
+        stats.put("failedRequests", failedRequests.get());
+        stats.put("successRate", calculateSuccessRate());
+        return stats;
     }
 
     public void reset() {
         totalRequests.set(0);
         successfulRequests.set(0);
         failedRequests.set(0);
-        // Note: Micrometer counters are not reset as they track lifetime totals
-        // The gauges will reflect the reset values
+        // Note: lifetime counters and FunctionCounters are intentionally NOT reset —
+        // Prometheus counters must be monotonically increasing.
     }
 
     /**
      * Calculates success rate as a decimal (0.0 to 1.0).
-     * Consolidates duplicated calculation logic.
+     * Based on the resettable counters.
      */
     public double calculateSuccessRate() {
         long total = totalRequests.get();

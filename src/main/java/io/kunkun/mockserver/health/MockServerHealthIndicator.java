@@ -1,4 +1,4 @@
-package io.kunkun.mockserver.config;
+package io.kunkun.mockserver.health;
 
 import io.kunkun.mockserver.service.MockEndpointService;
 import io.kunkun.mockserver.service.StatisticsService;

@@ -1,6 +1,7 @@
 package io.kunkun.mockserver.controller;
 
 import io.kunkun.mockserver.dto.ApiResponse;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -33,8 +34,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleValidationException(
             MethodArgumentNotValidException ex) {
 
-        String errors = ex.getBindingResult().getFieldErrors().stream()
+        // Collect both field errors and class-level constraint violations (@AssertTrue etc.)
+        String fieldErrors = ex.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
+                .collect(Collectors.joining(", "));
+
+        String globalErrors = ex.getBindingResult().getGlobalErrors().stream()
+                .map(e -> e.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+
+        String errors = java.util.stream.Stream.of(fieldErrors, globalErrors)
+                .filter(s -> !s.isEmpty())
                 .collect(Collectors.joining(", "));
 
         logger.warn("Validation error: {}", errors);
@@ -42,6 +52,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(
                 ApiResponse.error()
                         .withMessage("Validation failed: " + errors)
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex) {
+        String errors = ex.getConstraintViolations().stream()
+                .map(cv -> cv.getMessage())
+                .collect(Collectors.joining(", "));
+
+        logger.warn("Constraint violation: {}", errors);
+
+        return ResponseEntity.badRequest().body(
+                ApiResponse.error()
+                        .withMessage(errors)
                         .build()
         );
     }

@@ -9,8 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
@@ -94,7 +94,7 @@ public class ConfigurationPersistenceService {
         }
 
         File configFile = new File(properties.getPersistence().getFilePath());
-        Map<String, MockEndpointConfig> configs = getAllConfigurations();
+        Map<String, MockEndpointConfig> configs = endpointService.getAllConfigurations();
 
         try {
             // Create parent directories if needed
@@ -112,13 +112,6 @@ public class ConfigurationPersistenceService {
             logger.error("Failed to save configurations to file: {}", configFile.getAbsolutePath(), e);
             return false;
         }
-    }
-
-    /**
-     * Gets all currently configured endpoints from the endpoint service.
-     */
-    private Map<String, MockEndpointConfig> getAllConfigurations() {
-        return endpointService.getAllConfigurations();
     }
 
     /**
