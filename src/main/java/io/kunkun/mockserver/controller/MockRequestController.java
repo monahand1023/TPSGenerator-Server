@@ -2,7 +2,9 @@ package io.kunkun.mockserver.controller;
 
 import io.kunkun.mockserver.dto.ApiResponse;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
+import io.kunkun.mockserver.dto.RequestRecord;
 import io.kunkun.mockserver.service.MockEndpointService;
+import io.kunkun.mockserver.service.RequestHistoryService;
 import io.kunkun.mockserver.service.StatisticsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +23,15 @@ public class MockRequestController {
 
     private final MockEndpointService endpointService;
     private final StatisticsService statisticsService;
+    private final RequestHistoryService requestHistoryService;
 
-    public MockRequestController(MockEndpointService endpointService, StatisticsService statisticsService) {
+    public MockRequestController(
+            MockEndpointService endpointService,
+            StatisticsService statisticsService,
+            RequestHistoryService requestHistoryService) {
         this.endpointService = endpointService;
         this.statisticsService = statisticsService;
+        this.requestHistoryService = requestHistoryService;
     }
 
     @RequestMapping("/{path}/**")
@@ -35,7 +42,7 @@ public class MockRequestController {
             @RequestHeader Map<String, String> headers,
             HttpServletRequest request) {
 
-        // Record request
+        // Record request (global counter)
         long requestId = statisticsService.incrementAndGetRequestId();
         statisticsService.recordRequest();
 
@@ -52,6 +59,9 @@ public class MockRequestController {
             fullPath = fullPath.substring(1);
         }
 
+        // Per-endpoint request counter
+        statisticsService.recordRequest(fullPath);
+
         // Get configuration
         MockEndpointConfig config = endpointService.getEffectiveConfig(fullPath);
 
@@ -66,15 +76,40 @@ public class MockRequestController {
 
         // Check for simulated error using thread-safe ThreadLocalRandom
         if (ThreadLocalRandom.current().nextDouble() < config.getErrorRate()) {
-            return handleError(requestId, delay);
+            recordHistory(request.getMethod(), fullPath, headers, requestBody, HttpStatus.INTERNAL_SERVER_ERROR.value(), delay);
+            return handleError(requestId, delay, fullPath);
         }
 
-        return handleSuccess(requestId, delay, config, headers, requestParams, requestBody);
+        recordHistory(request.getMethod(), fullPath, headers, requestBody, HttpStatus.OK.value(), delay);
+        return handleSuccess(requestId, delay, config, headers, requestParams, requestBody, fullPath);
     }
 
-    private ResponseEntity<Object> handleError(long requestId, int delay) {
+    /**
+     * Creates and stores a {@link RequestRecord} for the given request attributes.
+     */
+    private void recordHistory(
+            String method,
+            String path,
+            Map<String, String> headers,
+            String requestBody,
+            int responseStatus,
+            long processingTimeMs) {
+        RequestRecord record = new RequestRecord(
+                System.currentTimeMillis(),
+                method,
+                path,
+                headers,
+                requestBody,
+                responseStatus,
+                processingTimeMs);
+        requestHistoryService.record(record);
+    }
+
+    private ResponseEntity<Object> handleError(long requestId, int delay, String endpoint) {
         statisticsService.recordFailure();
+        statisticsService.recordFailure(endpoint);
         statisticsService.recordProcessingTime(delay);
+        statisticsService.recordProcessingTime(delay, endpoint);
 
         logger.info("Completed request #{}: Status 500 - Response time: {}ms", requestId, delay);
 
@@ -93,10 +128,13 @@ public class MockRequestController {
             MockEndpointConfig config,
             Map<String, String> headers,
             Map<String, String> requestParams,
-            String requestBody) {
+            String requestBody,
+            String endpoint) {
 
         statisticsService.recordSuccess();
+        statisticsService.recordSuccess(endpoint);
         statisticsService.recordProcessingTime(delay);
+        statisticsService.recordProcessingTime(delay, endpoint);
 
         ApiResponse response = ApiResponse.success()
                 .withMessage(config.getResponseMessage())

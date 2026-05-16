@@ -2,14 +2,17 @@ package io.kunkun.mockserver.controller;
 
 import io.kunkun.mockserver.dto.ApiResponse;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
+import io.kunkun.mockserver.dto.RequestRecord;
 import io.kunkun.mockserver.service.ConfigurationPersistenceService;
 import io.kunkun.mockserver.service.MockEndpointService;
+import io.kunkun.mockserver.service.RequestHistoryService;
 import io.kunkun.mockserver.service.StatisticsService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,14 +32,17 @@ public class AdminController {
     private final MockEndpointService endpointService;
     private final StatisticsService statisticsService;
     private final ConfigurationPersistenceService persistenceService;
+    private final RequestHistoryService requestHistoryService;
 
     public AdminController(
             MockEndpointService endpointService,
             StatisticsService statisticsService,
-            ConfigurationPersistenceService persistenceService) {
+            ConfigurationPersistenceService persistenceService,
+            RequestHistoryService requestHistoryService) {
         this.endpointService = endpointService;
         this.statisticsService = statisticsService;
         this.persistenceService = persistenceService;
+        this.requestHistoryService = requestHistoryService;
     }
 
     // ========== Endpoint Configuration ==========
@@ -214,6 +220,58 @@ public class AdminController {
                 ApiResponse.success()
                         .with("enabled", persistenceService.isPersistenceEnabled())
                         .with("filePath", persistenceService.getPersistenceFilePath())
+                        .build()
+        );
+    }
+
+    // ========== Request History ==========
+
+    @GetMapping({ADMIN_BASE + "/history", API_V1_ADMIN_BASE + "/history"})
+    public ResponseEntity<Map<String, Object>> getAllHistory() {
+        Map<String, List<RequestRecord>> all = requestHistoryService.getAllHistory();
+        return ResponseEntity.ok(
+                ApiResponse.success()
+                        .with("history", all)
+                        .with("endpointCount", all.size())
+                        .build()
+        );
+    }
+
+    @GetMapping({ADMIN_BASE + "/history/{path}", API_V1_ADMIN_BASE + "/history/{path}"})
+    public ResponseEntity<Map<String, Object>> getHistoryForEndpoint(@PathVariable String path) {
+        List<RequestRecord> records = requestHistoryService.getHistory(path);
+        if (records.isEmpty()) {
+            return ResponseEntity.status(404).body(
+                    ApiResponse.error()
+                            .withMessage("No history found for endpoint: /" + path)
+                            .build()
+            );
+        }
+        return ResponseEntity.ok(
+                ApiResponse.success()
+                        .with("endpoint", path)
+                        .with("records", records)
+                        .with("count", records.size())
+                        .build()
+        );
+    }
+
+    @DeleteMapping({ADMIN_BASE + "/history/{path}", API_V1_ADMIN_BASE + "/history/{path}"})
+    public ResponseEntity<Map<String, Object>> clearHistoryForEndpoint(@PathVariable String path) {
+        requestHistoryService.clearHistory(path);
+        return ResponseEntity.ok(
+                ApiResponse.success()
+                        .withMessage("History cleared for endpoint: /" + path)
+                        .build()
+        );
+    }
+
+    @DeleteMapping({ADMIN_BASE + "/history", API_V1_ADMIN_BASE + "/history"})
+    public ResponseEntity<Map<String, Object>> clearAllHistory() {
+        requestHistoryService.clearAllHistory();
+        return ResponseEntity.ok(
+                ApiResponse.success()
+                        .withMessage("All request history cleared")
                         .build()
         );
     }
