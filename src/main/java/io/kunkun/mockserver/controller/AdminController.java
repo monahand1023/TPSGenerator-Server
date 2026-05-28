@@ -19,15 +19,13 @@ import java.util.Map;
  * Admin controller for managing mock server configuration.
  * Available at both /admin and /api/v1/admin for versioned access.
  *
- * Path constants eliminate magic string duplication between the two URL prefixes.
+ * The class-level @RequestMapping covers both URL prefixes so individual methods
+ * only specify the relative path segment.
  */
 @RestController
 @Validated
+@RequestMapping({"/admin", "/api/v1/admin"})
 public class AdminController {
-
-    // Path prefixes — both must be kept in sync with all @*Mapping annotations below
-    private static final String ADMIN_BASE = "/admin";
-    private static final String API_V1_ADMIN_BASE = "/api/v1/admin";
 
     private final MockEndpointService endpointService;
     private final StatisticsService statisticsService;
@@ -47,7 +45,7 @@ public class AdminController {
 
     // ========== Endpoint Configuration ==========
 
-    @PostMapping({ADMIN_BASE + "/config/{path}", API_V1_ADMIN_BASE + "/config/{path}"})
+    @PostMapping("/config/{path}")
     public ResponseEntity<Map<String, Object>> configureEndpoint(
             @PathVariable String path,
             @RequestBody @Valid MockEndpointConfig config) {
@@ -62,14 +60,14 @@ public class AdminController {
         );
     }
 
-    @GetMapping({ADMIN_BASE + "/config/{path}", API_V1_ADMIN_BASE + "/config/{path}"})
+    @GetMapping("/config/{path}")
     public ResponseEntity<MockEndpointConfig> getEndpointConfig(@PathVariable String path) {
         return endpointService.getEndpointConfig(path)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @GetMapping({ADMIN_BASE + "/config", API_V1_ADMIN_BASE + "/config"})
+    @GetMapping("/config")
     public ResponseEntity<Map<String, Object>> getAllEndpointConfigs() {
         return ResponseEntity.ok(
                 ApiResponse.success()
@@ -79,7 +77,7 @@ public class AdminController {
         );
     }
 
-    @DeleteMapping({ADMIN_BASE + "/config/{path}", API_V1_ADMIN_BASE + "/config/{path}"})
+    @DeleteMapping("/config/{path}")
     public ResponseEntity<Map<String, Object>> deleteEndpointConfig(@PathVariable String path) {
         boolean deleted = endpointService.deleteEndpoint(path);
 
@@ -98,7 +96,7 @@ public class AdminController {
         }
     }
 
-    @DeleteMapping({ADMIN_BASE + "/config", API_V1_ADMIN_BASE + "/config"})
+    @DeleteMapping("/config")
     public ResponseEntity<Map<String, Object>> clearAllEndpointConfigs() {
         int count = endpointService.getConfiguredEndpointCount();
         endpointService.clearAllConfigurations();
@@ -113,11 +111,11 @@ public class AdminController {
 
     // ========== Default Configuration ==========
 
-    @PostMapping({ADMIN_BASE + "/defaults", API_V1_ADMIN_BASE + "/defaults"})
+    @PostMapping("/defaults")
     public ResponseEntity<Map<String, Object>> configureDefaults(
-            @RequestParam(required = false) Integer minDelay,
-            @RequestParam(required = false) Integer maxDelay,
-            @RequestParam(required = false) Double errorRate) {
+            @RequestParam(required = false) @jakarta.validation.constraints.Min(value = 0, message = "minDelay must be non-negative") Integer minDelay,
+            @RequestParam(required = false) @jakarta.validation.constraints.Min(value = 0, message = "maxDelay must be non-negative") Integer maxDelay,
+            @RequestParam(required = false) @jakarta.validation.constraints.DecimalMin(value = "0.0", message = "errorRate must be between 0.0 and 1.0") @jakarta.validation.constraints.DecimalMax(value = "1.0", message = "errorRate must be between 0.0 and 1.0") Double errorRate) {
 
         endpointService.updateDefaults(minDelay, maxDelay, errorRate);
 
@@ -130,7 +128,7 @@ public class AdminController {
         );
     }
 
-    @GetMapping({ADMIN_BASE + "/defaults", API_V1_ADMIN_BASE + "/defaults"})
+    @GetMapping("/defaults")
     public ResponseEntity<Map<String, Object>> getDefaults() {
         return ResponseEntity.ok(
                 ApiResponse.success()
@@ -143,7 +141,7 @@ public class AdminController {
 
     // ========== Statistics ==========
 
-    @GetMapping({ADMIN_BASE + "/stats", API_V1_ADMIN_BASE + "/stats"})
+    @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
         Map<String, Object> stats = statisticsService.getStats();
         ApiResponse response = ApiResponse.success();
@@ -151,7 +149,7 @@ public class AdminController {
         return ResponseEntity.ok(response.build());
     }
 
-    @PostMapping({ADMIN_BASE + "/stats/reset", API_V1_ADMIN_BASE + "/stats/reset"})
+    @PostMapping("/stats/reset")
     public ResponseEntity<Map<String, Object>> resetStats() {
         statisticsService.reset();
 
@@ -164,7 +162,7 @@ public class AdminController {
 
     // ========== Persistence ==========
 
-    @PostMapping({ADMIN_BASE + "/persistence/save", API_V1_ADMIN_BASE + "/persistence/save"})
+    @PostMapping("/persistence/save")
     public ResponseEntity<Map<String, Object>> saveConfigurations() {
         if (!persistenceService.isPersistenceEnabled()) {
             return ResponseEntity.badRequest().body(
@@ -193,7 +191,7 @@ public class AdminController {
         }
     }
 
-    @PostMapping({ADMIN_BASE + "/persistence/load", API_V1_ADMIN_BASE + "/persistence/load"})
+    @PostMapping("/persistence/load")
     public ResponseEntity<Map<String, Object>> loadConfigurations() {
         if (!persistenceService.isPersistenceEnabled()) {
             return ResponseEntity.badRequest().body(
@@ -214,7 +212,7 @@ public class AdminController {
         );
     }
 
-    @GetMapping({ADMIN_BASE + "/persistence/status", API_V1_ADMIN_BASE + "/persistence/status"})
+    @GetMapping("/persistence/status")
     public ResponseEntity<Map<String, Object>> getPersistenceStatus() {
         return ResponseEntity.ok(
                 ApiResponse.success()
@@ -226,7 +224,7 @@ public class AdminController {
 
     // ========== Request History ==========
 
-    @GetMapping({ADMIN_BASE + "/history", API_V1_ADMIN_BASE + "/history"})
+    @GetMapping("/history")
     public ResponseEntity<Map<String, Object>> getAllHistory() {
         Map<String, List<RequestRecord>> all = requestHistoryService.getAllHistory();
         return ResponseEntity.ok(
@@ -237,7 +235,7 @@ public class AdminController {
         );
     }
 
-    @GetMapping({ADMIN_BASE + "/history/{path}", API_V1_ADMIN_BASE + "/history/{path}"})
+    @GetMapping("/history/{path}")
     public ResponseEntity<Map<String, Object>> getHistoryForEndpoint(@PathVariable String path) {
         List<RequestRecord> records = requestHistoryService.getHistory(path);
         if (records.isEmpty()) {
@@ -256,7 +254,7 @@ public class AdminController {
         );
     }
 
-    @DeleteMapping({ADMIN_BASE + "/history/{path}", API_V1_ADMIN_BASE + "/history/{path}"})
+    @DeleteMapping("/history/{path}")
     public ResponseEntity<Map<String, Object>> clearHistoryForEndpoint(@PathVariable String path) {
         requestHistoryService.clearHistory(path);
         return ResponseEntity.ok(
@@ -266,7 +264,7 @@ public class AdminController {
         );
     }
 
-    @DeleteMapping({ADMIN_BASE + "/history", API_V1_ADMIN_BASE + "/history"})
+    @DeleteMapping("/history")
     public ResponseEntity<Map<String, Object>> clearAllHistory() {
         requestHistoryService.clearAllHistory();
         return ResponseEntity.ok(

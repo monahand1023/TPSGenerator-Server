@@ -29,9 +29,6 @@ public class MockEndpointService {
 
     private static final Logger logger = LoggerFactory.getLogger(MockEndpointService.class);
 
-    // Maximum number of endpoint configurations to prevent unbounded memory growth
-    private static final int MAX_ENDPOINT_CONFIGS = 10000;
-
     /**
      * Thread-safe LRU cache backed by Caffeine.
      *
@@ -39,11 +36,11 @@ public class MockEndpointService {
      * concurrency bug: access-order LinkedHashMap.get() mutates internal state (moves the entry
      * to the tail), making it unsafe under a shared read lock. Caffeine provides correct
      * concurrent LRU semantics without any external locking.
+     *
+     * The maximum size comes from {@link MockServerProperties#getMaxEndpointConfigs()} so it
+     * can be overridden via configuration without a code change.
      */
-    private final Cache<String, MockEndpointConfig> endpointConfigs =
-            Caffeine.newBuilder()
-                    .maximumSize(MAX_ENDPOINT_CONFIGS)
-                    .build();
+    private final Cache<String, MockEndpointConfig> endpointConfigs;
 
     private final MockServerProperties properties;
 
@@ -60,6 +57,9 @@ public class MockEndpointService {
 
     public MockEndpointService(MockServerProperties properties) {
         this.properties = properties;
+        this.endpointConfigs = Caffeine.newBuilder()
+                .maximumSize(properties.getMaxEndpointConfigs())
+                .build();
         this.defaults = new AtomicReference<>(new DefaultConfig(
                 properties.getDefaultMinDelay(),
                 properties.getDefaultMaxDelay(),
@@ -233,13 +233,15 @@ public class MockEndpointService {
     }
 
     public void updateDefaults(Integer minDelay, Integer maxDelay, Double errorRate) {
-        // Atomically update defaults by creating new immutable config
+        // Atomically update defaults by creating new immutable config.
+        // Individual scalar constraints are also enforced by JSR-380 @RequestParam annotations in
+        // the controller so HTTP callers get consistent 400 responses before reaching this method.
+        // The service-layer checks here protect programmatic (non-HTTP) callers.
         defaults.updateAndGet(current -> {
             int newMinDelay = minDelay != null ? minDelay : current.minDelay;
             int newMaxDelay = maxDelay != null ? maxDelay : current.maxDelay;
             double newErrorRate = errorRate != null ? errorRate : current.errorRate;
 
-            // Validate before creating new config
             if (newMinDelay < 0) {
                 throw new IllegalArgumentException("minDelay must be non-negative");
             }

@@ -25,6 +25,12 @@ public class MockServerProperties {
     @Min(value = 1, message = "statsLogIntervalMs must be positive")
     private long statsLogIntervalMs = 10000;
 
+    @Min(value = 1, message = "maxHistoryPerEndpoint must be at least 1")
+    private int maxHistoryPerEndpoint = 100;
+
+    @Min(value = 1, message = "maxEndpointConfigs must be at least 1")
+    private int maxEndpointConfigs = 10000;
+
     private Persistence persistence = new Persistence();
 
     public int getDefaultMinDelay() {
@@ -57,6 +63,22 @@ public class MockServerProperties {
 
     public void setStatsLogIntervalMs(long statsLogIntervalMs) {
         this.statsLogIntervalMs = statsLogIntervalMs;
+    }
+
+    public int getMaxHistoryPerEndpoint() {
+        return maxHistoryPerEndpoint;
+    }
+
+    public void setMaxHistoryPerEndpoint(int maxHistoryPerEndpoint) {
+        this.maxHistoryPerEndpoint = maxHistoryPerEndpoint;
+    }
+
+    public int getMaxEndpointConfigs() {
+        return maxEndpointConfigs;
+    }
+
+    public void setMaxEndpointConfigs(int maxEndpointConfigs) {
+        this.maxEndpointConfigs = maxEndpointConfigs;
     }
 
     public Persistence getPersistence() {

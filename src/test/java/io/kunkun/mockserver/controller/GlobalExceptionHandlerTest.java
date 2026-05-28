@@ -2,17 +2,26 @@ package io.kunkun.mockserver.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -115,5 +124,86 @@ class GlobalExceptionHandlerTest {
                         .content(objectMapper.writeValueAsString(config)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value("error"));
+    }
+
+    // ========== ConstraintViolationException Tests ==========
+
+    @Test
+    void handleConstraintViolation_returnsBadRequestWithMessage() {
+        // Test the handler method directly (ConstraintViolationException is hard to trigger
+        // through MockMvc without a @RequestParam @Min annotation on a controller method)
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ConstraintViolation<?> violation = mock(ConstraintViolation.class);
+        when(violation.getMessage()).thenReturn("value must be positive");
+        ConstraintViolationException ex = new ConstraintViolationException(
+                "Constraint violated", Set.of(violation));
+
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map<String, Object>> response =
+                (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleConstraintViolation(ex);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("error", response.getBody().get("status"));
+        assertTrue(response.getBody().get("message").toString().contains("value must be positive"));
+    }
+
+    @Test
+    void handleConstraintViolation_multipleViolations_joinsMessages() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+        ConstraintViolation<?> v1 = mock(ConstraintViolation.class);
+        when(v1.getMessage()).thenReturn("must not be null");
+        ConstraintViolation<?> v2 = mock(ConstraintViolation.class);
+        when(v2.getMessage()).thenReturn("must be positive");
+
+        ConstraintViolationException ex = new ConstraintViolationException(Set.of(v1, v2));
+
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map<String, Object>> response =
+                (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleConstraintViolation(ex);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        String message = response.getBody().get("message").toString();
+        // Both messages should appear (joined by ", ")
+        assertTrue(message.contains("must not be null") || message.contains("must be positive"));
+    }
+
+    // ========== Generic Exception Tests ==========
+
+    @Test
+    void handleGenericException_returns500WithCorrelationId() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        Exception ex = new RuntimeException("something went wrong");
+
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map<String, Object>> response =
+                (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleGenericException(ex);
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("error", response.getBody().get("status"));
+        String message = response.getBody().get("message").toString();
+        // After FIX 8 the message includes a correlation id ref
+        assertTrue(message.contains("Internal server error"));
+    }
+
+    @Test
+    void handleGenericException_eachCallProducesDifferentCorrelationId() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        Exception ex = new RuntimeException("oops");
+
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map<String, Object>> r1 =
+                (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleGenericException(ex);
+        @SuppressWarnings("unchecked")
+        ResponseEntity<Map<String, Object>> r2 =
+                (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) handler.handleGenericException(ex);
+
+        String msg1 = r1.getBody().get("message").toString();
+        String msg2 = r2.getBody().get("message").toString();
+        // Each call should produce a unique correlation id
+        assertNotEquals(msg1, msg2);
     }
 }

@@ -1,5 +1,6 @@
 package io.kunkun.mockserver.service;
 
+import io.kunkun.mockserver.config.MockServerProperties;
 import io.kunkun.mockserver.dto.RequestRecord;
 import org.springframework.stereotype.Service;
 
@@ -26,14 +27,29 @@ import java.util.concurrent.locks.ReentrantLock;
 @Service
 public class RequestHistoryService {
 
-    /** Maximum number of {@link RequestRecord}s retained per endpoint path. */
+    /**
+     * Maximum number of {@link RequestRecord}s retained per endpoint path.
+     * Kept as a package-private constant for use in tests; the effective value at runtime
+     * comes from {@link MockServerProperties#getMaxHistoryPerEndpoint()}.
+     */
     static final int MAX_HISTORY_PER_ENDPOINT = 100;
+
+    private final int maxHistoryPerEndpoint;
 
     private final ConcurrentHashMap<String, ArrayDeque<RequestRecord>> history =
             new ConcurrentHashMap<>();
 
     private final ConcurrentHashMap<String, ReentrantLock> locks =
             new ConcurrentHashMap<>();
+
+    public RequestHistoryService(MockServerProperties properties) {
+        this.maxHistoryPerEndpoint = properties.getMaxHistoryPerEndpoint();
+    }
+
+    /** Package-private no-arg constructor for unit tests (uses the default constant). */
+    RequestHistoryService() {
+        this.maxHistoryPerEndpoint = MAX_HISTORY_PER_ENDPOINT;
+    }
 
     // -----------------------------------------------------------------------
     // Internal helpers
@@ -64,7 +80,7 @@ public class RequestHistoryService {
         lock.lock();
         try {
             ArrayDeque<RequestRecord> deque = dequeFor(endpoint);
-            if (deque.size() >= MAX_HISTORY_PER_ENDPOINT) {
+            if (deque.size() >= maxHistoryPerEndpoint) {
                 deque.pollFirst(); // drop the oldest
             }
             deque.addLast(record);

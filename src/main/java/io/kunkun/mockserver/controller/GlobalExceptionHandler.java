@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -73,11 +74,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
-        logger.error("Unexpected error", ex);
+        String correlationId = UUID.randomUUID().toString();
+        logger.error("Unhandled exception [ref: {}]", correlationId, ex);
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                 ApiResponse.error()
-                        .withMessage("Internal server error")
+                        .withMessage("Internal server error (ref: " + correlationId + ")")
                         .build()
         );
     }
