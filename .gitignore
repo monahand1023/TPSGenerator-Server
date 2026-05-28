@@ -40,3 +40,6 @@ build/
 ### Mock endpoint persistence ###
 mock-endpoints.json
 mock-endpoints.json.tmp
+# Local secrets — never commit
+.env
+.env.local
