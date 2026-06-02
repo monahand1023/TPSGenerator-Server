@@ -1,0 +1,35 @@
+2026-06-02 16:57:30 [main] INFO  i.k.t.TPSGeneratorApplication - Loaded test configuration: dashboard-smoke
+2026-06-02 16:57:30 [main] INFO  i.k.t.metrics.ResourceMonitor - Initialized resource monitor
+2026-06-02 16:57:30 [main] INFO  i.k.t.metrics.MetricsCollector - Initialized metrics collector
+2026-06-02 16:57:30 [main] INFO  i.k.t.request.RequestGenerator - Initialized request generator with 1 templates and 0 parameter sources
+2026-06-02 16:57:30 [main] ERROR i.k.t.TPSGeneratorApplication - Error executing test
+java.lang.NullPointerException: Cannot invoke "io.kunkun.tpsgenerator.config.TestConfig$CircuitBreakerConfig.isEnabled()" because the return value of "io.kunkun.tpsgenerator.config.TestConfig.getCircuitBreaker()" is null
+	at io.kunkun.tpsgenerator.core.ExecutionController.<init>(ExecutionController.java:98)
+	at io.kunkun.tpsgenerator.TPSGeneratorApplication.main(TPSGeneratorApplication.java:91)
+2026-06-02 16:58:50 [main] INFO  i.k.t.TPSGeneratorApplication - Loaded test configuration: dashboard-smoke
+2026-06-02 16:58:50 [main] INFO  i.k.t.metrics.ResourceMonitor - Initialized resource monitor
+2026-06-02 16:58:50 [main] INFO  i.k.t.metrics.MetricsCollector - Initialized metrics collector
+2026-06-02 16:58:50 [main] INFO  i.k.t.request.RequestGenerator - Initialized request generator with 1 templates and 0 parameter sources
+2026-06-02 16:58:50 [main] INFO  i.k.t.core.ExecutionController - Initialized execution controller with traffic pattern: StablePattern(tps=50.00)
+2026-06-02 16:58:50 [main] INFO  i.k.t.TPSGeneratorApplication - Starting test execution...
+2026-06-02 16:58:50 [main] INFO  i.k.t.metrics.ResourceMonitor - Started resource monitoring with sample interval PT1S
+2026-06-02 16:58:50 [main] INFO  i.k.t.metrics.MetricsCollector - Started metrics collection at 1780444730402
+2026-06-02 16:58:50 [pool-2-thread-1] INFO  i.k.t.core.RateLimiterScheduler - Progress: 0.0% | Target TPS: 50.00 | Actual TPS: 0.00 | Success Rate: 0.00%
+2026-06-02 16:58:50 [main] INFO  i.k.t.m.exporter.DashboardClient - Initialized dashboard client with URL: http://localhost:18080
+2026-06-02 16:58:50 [main] INFO  i.k.t.m.exporter.DashboardClient - Test registered with dashboard: 991bc4f8-880d-4e53-8296-7870bd58993c
+2026-06-02 16:58:50 [main] INFO  i.k.t.m.exporter.DashboardClient - Started real-time dashboard updates with interval: 2000 ms
+2026-06-02 16:58:50 [main] INFO  i.k.t.core.ExecutionController - Live dashboard reporting enabled (testId=991bc4f8-880d-4e53-8296-7870bd58993c)
+2026-06-02 16:58:50 [main] INFO  i.k.t.core.ExecutionController - Test started, will run for 8 seconds (1 submission thread(s))
+2026-06-02 16:58:58 [main] INFO  i.k.t.core.ExecutionController - Test execution completed, waiting for pending requests to finish
+2026-06-02 16:58:58 [main] INFO  i.k.t.metrics.ResourceMonitor - Stopped resource monitoring, collected 9 snapshots
+2026-06-02 16:58:58 [main] INFO  i.k.t.metrics.MetricsCollector - Stopped metrics collection, test duration: 8054 ms
+2026-06-02 16:58:58 [main] INFO  i.k.t.m.exporter.DashboardClient - Test marked as finished in dashboard: 991bc4f8-880d-4e53-8296-7870bd58993c
+2026-06-02 16:58:58 [main] INFO  i.k.t.m.exporter.DashboardClient - Stopped dashboard updates
+2026-06-02 16:58:58 [main] INFO  i.k.t.m.exporter.DashboardClient - Test result sent to dashboard
+2026-06-02 16:58:58 [main] INFO  i.k.t.TPSGeneratorApplication - Test completed in 00:00:08
+2026-06-02 16:58:58 [main] INFO  i.k.t.metrics.exporter.CSVExporter - Exporting metrics to /tmp/smoke-results/dashboard-smoke_20260602_165850.csv
+2026-06-02 16:58:58 [main] INFO  i.k.t.metrics.exporter.CSVExporter - Metrics exported successfully
+2026-06-02 16:58:58 [main] INFO  i.k.t.TPSGeneratorApplication - CSV results exported to /tmp/smoke-results/dashboard-smoke_20260602_165850.csv
+2026-06-02 16:58:58 [main] INFO  i.k.t.metrics.exporter.JsonExporter - Exporting JSON results to /tmp/smoke-results/dashboard-smoke_20260602_165850.json
+2026-06-02 16:58:58 [main] INFO  i.k.t.metrics.exporter.JsonExporter - JSON results exported successfully
+2026-06-02 16:58:58 [main] INFO  i.k.t.TPSGeneratorApplication - JSON results exported to /tmp/smoke-results/dashboard-smoke_20260602_165850.json
