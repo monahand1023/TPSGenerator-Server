@@ -62,7 +62,7 @@ The server lets you configure how each endpoint behaves, including response time
 
 ### Prerequisites
 
-- Java 17 or higher (Spring Boot 3.x requires Java 17+)
+- Java 21 or higher (Spring Boot 3.2)
 - Maven 3.6 or higher
 
 ### Building and Running

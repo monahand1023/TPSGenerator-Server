@@ -8,12 +8,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      ADMIN_PASSWORD: test-password
+      # Must match src/test/resources/application-test.properties (env vars
+      # outrank profile properties in Spring, so a mismatch 401s every auth test).
+      ADMIN_PASSWORD: testpassword
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
       - run: mvn test
