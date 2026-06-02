@@ -239,17 +239,6 @@ public class MockRequestController {
         statisticsService.recordProcessingTime(delay);
         statisticsService.recordProcessingTime(delay, endpoint);
 
-        ApiResponse response = ApiResponse.success()
-                .withMessage(config.getResponseMessage())
-                .withRequestId(requestId)
-                .withProcessingTime(delay)
-                .with("headers", headers)
-                .with("params", requestParams);
-
-        if (requestBody != null && !requestBody.isEmpty()) {
-            response.with("requestBody", requestBody);
-        }
-
         // Build response with custom headers, skipping framework-managed ones and stripping
         // CR/LF to prevent response-header injection from a malicious/typo'd config value.
         ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(status);
@@ -269,6 +258,54 @@ public class MockRequestController {
             logger.debug("Completed request #{}: Status {} - Response time: {}ms", requestId, status, delay);
         }
 
+        int targetSize = config.getResponseSizeBytes();
+
+        // Custom raw body mode (templated) takes precedence over the default JSON envelope.
+        if (config.getResponseBody() != null) {
+            String body = padToSize(substitutePlaceholders(config.getResponseBody(), requestId), targetSize);
+            return responseBuilder.body(body);
+        }
+
+        ApiResponse response = ApiResponse.success()
+                .withMessage(config.getResponseMessage())
+                .withRequestId(requestId)
+                .withProcessingTime(delay)
+                .with("headers", headers)
+                .with("params", requestParams);
+
+        if (requestBody != null && !requestBody.isEmpty()) {
+            response.with("requestBody", requestBody);
+        }
+
+        // Size control: pad the envelope so the body is at least targetSize bytes.
+        if (targetSize > 0) {
+            response.with("padding", "x".repeat(targetSize));
+        }
+
         return responseBuilder.body(response.build());
+    }
+
+    /** Substitutes ${requestId}/${timestamp}/${random} placeholders in a custom response body. */
+    private static String substitutePlaceholders(String template, long requestId) {
+        if (template.indexOf("${") < 0) {
+            return template;
+        }
+        return template
+                .replace("${requestId}", Long.toString(requestId))
+                .replace("${timestamp}", Long.toString(System.currentTimeMillis()))
+                .replace("${random}", Long.toString(ThreadLocalRandom.current().nextLong(Long.MAX_VALUE)));
+    }
+
+    /** Pads {@code body} with filler so it is at least {@code targetSize} bytes (chars), if set. */
+    private static String padToSize(String body, int targetSize) {
+        if (targetSize <= 0 || body.length() >= targetSize) {
+            return body;
+        }
+        StringBuilder sb = new StringBuilder(targetSize);
+        sb.append(body);
+        while (sb.length() < targetSize) {
+            sb.append('x');
+        }
+        return sb.toString();
     }
 }

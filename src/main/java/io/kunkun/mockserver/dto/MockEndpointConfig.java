@@ -51,6 +51,19 @@ public class MockEndpointConfig {
      */
     private String delayDistribution = "uniform";
 
+    /**
+     * Optional raw response body returned for successful responses, replacing the default JSON
+     * envelope. Supports {@code ${requestId}}, {@code ${timestamp}}, and {@code ${random}}
+     * placeholders. Set a {@code Content-Type} in {@link #responseHeaders} to match.
+     */
+    private String responseBody;
+
+    /**
+     * Optional minimum response-body size in bytes. When &gt; 0 the body is padded with filler so
+     * it is at least this large — useful for stressing client-side deserialization and bandwidth.
+     */
+    private int responseSizeBytes = 0;
+
     public MockEndpointConfig() {
     }
 
@@ -146,5 +159,21 @@ public class MockEndpointConfig {
 
     public void setDelayDistribution(String delayDistribution) {
         this.delayDistribution = delayDistribution;
+    }
+
+    public String getResponseBody() {
+        return responseBody;
+    }
+
+    public void setResponseBody(String responseBody) {
+        this.responseBody = responseBody;
+    }
+
+    public int getResponseSizeBytes() {
+        return responseSizeBytes;
+    }
+
+    public void setResponseSizeBytes(int responseSizeBytes) {
+        this.responseSizeBytes = responseSizeBytes;
     }
 }

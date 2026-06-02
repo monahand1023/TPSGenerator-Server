@@ -280,6 +280,41 @@ class MockRequestControllerTest {
         }
     }
 
+    // ========== Custom Response Body + Size Tests ==========
+
+    @Test
+    void handleRequest_withCustomResponseBody_returnsTemplatedBody() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "ignored");
+        config.setResponseBody("id=${requestId}");
+
+        mockMvc.perform(post("/admin/config/raw-body")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/raw-body"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(matchesPattern("id=\\d+")));
+    }
+
+    @Test
+    void handleRequest_withResponseSizeBytes_padsResponse() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "ignored");
+        config.setResponseBody("x");
+        config.setResponseSizeBytes(256);
+
+        mockMvc.perform(post("/admin/config/big-body")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        MvcResult res = mockMvc.perform(get("/big-body"))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertTrue(res.getResponse().getContentAsString().length() >= 256,
+                "body should be padded to at least 256 bytes");
+    }
+
     // ========== Statistics Integration Tests ==========
 
     @Test
