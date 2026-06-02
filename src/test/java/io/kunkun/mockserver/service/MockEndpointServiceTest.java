@@ -302,6 +302,7 @@ class MockEndpointServiceTest {
     void filePersistence_writtenConfigsSurviveRestart() {
         String configFile = tempDir.resolve("persist-test.json").toString();
         service.setConfigFilePath(configFile);
+        service.setPersistenceEnabled(true); // auto-save on mutation requires persistence enabled
 
         // Write 3 configs
         service.configureEndpoint("persist/alpha",
@@ -345,6 +346,7 @@ class MockEndpointServiceTest {
     void filePersistence_deleteEndpoint_updatesFile() {
         String configFile = tempDir.resolve("delete-test.json").toString();
         service.setConfigFilePath(configFile);
+        service.setPersistenceEnabled(true); // auto-save on mutation requires persistence enabled
 
         service.configureEndpoint("keep/me", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Keep"));
         service.configureEndpoint("delete/me", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Delete"));
@@ -359,5 +361,59 @@ class MockEndpointServiceTest {
         assertEquals(1, reloaded.getConfiguredEndpointCount());
         assertTrue(reloaded.getEndpointConfig("keep/me").isPresent());
         assertFalse(reloaded.getEndpointConfig("delete/me").isPresent());
+    }
+
+    // ========== Consolidated Persistence API Tests ==========
+
+    @Test
+    void persistenceDisabled_configureEndpoint_doesNotWriteFile() {
+        String configFile = tempDir.resolve("disabled.json").toString();
+        service.setConfigFilePath(configFile);
+        // persistence is disabled by default — auto-save must not fire
+        service.configureEndpoint("api/x", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "X"));
+
+        assertFalse(new java.io.File(configFile).exists(),
+                "auto-save must not write a file when persistence is disabled");
+    }
+
+    @Test
+    void saveToFile_writesSnapshot_andReturnsTrue() throws Exception {
+        String configFile = tempDir.resolve("explicit-save.json").toString();
+        service.setConfigFilePath(configFile);
+        service.configureEndpoint("api/y", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Y"));
+
+        boolean ok = service.saveToFile();
+
+        assertTrue(ok);
+        String content = java.nio.file.Files.readString(java.nio.file.Path.of(configFile));
+        assertTrue(content.contains("api/y"));
+    }
+
+    @Test
+    void reloadFromFile_replacesInMemoryState() {
+        String configFile = tempDir.resolve("reload.json").toString();
+        service.setConfigFilePath(configFile);
+        service.configureEndpoint("api/keep", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Keep"));
+        service.saveToFile();
+
+        // Mutate in-memory state after the snapshot was written
+        service.configureEndpoint("api/transient", new MockEndpointConfig(10, 50, 0.0, new HashMap<>(), "Transient"));
+        assertEquals(2, service.getConfiguredEndpointCount());
+
+        int loaded = service.reloadFromFile();
+
+        assertEquals(1, loaded);
+        assertTrue(service.getEndpointConfig("api/keep").isPresent());
+        assertFalse(service.getEndpointConfig("api/transient").isPresent());
+    }
+
+    @Test
+    void persistenceMetadata_reflectsConfiguration() {
+        properties.getPersistence().setEnabled(true);
+        properties.getPersistence().setFilePath("/custom/path/config.json");
+        MockEndpointService svc = new MockEndpointService(properties);
+
+        assertTrue(svc.isPersistenceEnabled());
+        assertEquals("/custom/path/config.json", svc.getPersistenceFilePath());
     }
 }

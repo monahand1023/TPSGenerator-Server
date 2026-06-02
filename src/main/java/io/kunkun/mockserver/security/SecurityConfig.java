@@ -66,6 +66,9 @@ public class SecurityConfig {
                     .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/mock/**").permitAll()
                     .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/mock/**").permitAll()
                     .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                    // Protect BOTH admin prefixes. AdminController maps {"/admin","/api/v1/admin"},
+                    // so without the first matcher the unversioned alias would bypass auth entirely.
+                    .requestMatchers("/admin/**").authenticated()
                     .requestMatchers("/api/v1/admin/**").authenticated()
                     .anyRequest().permitAll()
             )

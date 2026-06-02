@@ -3,7 +3,6 @@ package io.kunkun.mockserver.controller;
 import io.kunkun.mockserver.dto.ApiResponse;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
 import io.kunkun.mockserver.dto.RequestRecord;
-import io.kunkun.mockserver.service.ConfigurationPersistenceService;
 import io.kunkun.mockserver.service.MockEndpointService;
 import io.kunkun.mockserver.service.RequestHistoryService;
 import io.kunkun.mockserver.service.StatisticsService;
@@ -29,17 +28,14 @@ public class AdminController {
 
     private final MockEndpointService endpointService;
     private final StatisticsService statisticsService;
-    private final ConfigurationPersistenceService persistenceService;
     private final RequestHistoryService requestHistoryService;
 
     public AdminController(
             MockEndpointService endpointService,
             StatisticsService statisticsService,
-            ConfigurationPersistenceService persistenceService,
             RequestHistoryService requestHistoryService) {
         this.endpointService = endpointService;
         this.statisticsService = statisticsService;
-        this.persistenceService = persistenceService;
         this.requestHistoryService = requestHistoryService;
     }
 
@@ -164,7 +160,7 @@ public class AdminController {
 
     @PostMapping("/persistence/save")
     public ResponseEntity<Map<String, Object>> saveConfigurations() {
-        if (!persistenceService.isPersistenceEnabled()) {
+        if (!endpointService.isPersistenceEnabled()) {
             return ResponseEntity.badRequest().body(
                     ApiResponse.error()
                             .withMessage("Persistence is disabled. Enable it in application.properties")
@@ -172,13 +168,13 @@ public class AdminController {
             );
         }
 
-        boolean success = persistenceService.saveConfigurations();
+        boolean success = endpointService.saveToFile();
 
         if (success) {
             return ResponseEntity.ok(
                     ApiResponse.success()
                             .withMessage("Configurations saved successfully")
-                            .with("filePath", persistenceService.getPersistenceFilePath())
+                            .with("filePath", endpointService.getPersistenceFilePath())
                             .with("endpointCount", endpointService.getConfiguredEndpointCount())
                             .build()
             );
@@ -193,7 +189,7 @@ public class AdminController {
 
     @PostMapping("/persistence/load")
     public ResponseEntity<Map<String, Object>> loadConfigurations() {
-        if (!persistenceService.isPersistenceEnabled()) {
+        if (!endpointService.isPersistenceEnabled()) {
             return ResponseEntity.badRequest().body(
                     ApiResponse.error()
                             .withMessage("Persistence is disabled. Enable it in application.properties")
@@ -201,13 +197,13 @@ public class AdminController {
             );
         }
 
-        persistenceService.loadConfigurationsOnStartup();
+        int count = endpointService.reloadFromFile();
 
         return ResponseEntity.ok(
                 ApiResponse.success()
                         .withMessage("Configurations loaded")
-                        .with("filePath", persistenceService.getPersistenceFilePath())
-                        .with("endpointCount", endpointService.getConfiguredEndpointCount())
+                        .with("filePath", endpointService.getPersistenceFilePath())
+                        .with("endpointCount", count)
                         .build()
         );
     }
@@ -216,8 +212,8 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getPersistenceStatus() {
         return ResponseEntity.ok(
                 ApiResponse.success()
-                        .with("enabled", persistenceService.isPersistenceEnabled())
-                        .with("filePath", persistenceService.getPersistenceFilePath())
+                        .with("enabled", endpointService.isPersistenceEnabled())
+                        .with("filePath", endpointService.getPersistenceFilePath())
                         .build()
         );
     }

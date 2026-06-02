@@ -31,7 +31,17 @@ public class MockServerProperties {
     @Min(value = 1, message = "maxEndpointConfigs must be at least 1")
     private int maxEndpointConfigs = 10000;
 
+    private History history = new History();
+
     private Persistence persistence = new Persistence();
+
+    public History getHistory() {
+        return history;
+    }
+
+    public void setHistory(History history) {
+        this.history = history;
+    }
 
     public int getDefaultMinDelay() {
         return defaultMinDelay;
@@ -87,6 +97,22 @@ public class MockServerProperties {
 
     public void setPersistence(Persistence persistence) {
         this.persistence = persistence;
+    }
+
+    /**
+     * Configuration for per-endpoint request history recording.
+     */
+    public static class History {
+        /** Off by default — recording allocates a record (with a header copy) per request. */
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     /**

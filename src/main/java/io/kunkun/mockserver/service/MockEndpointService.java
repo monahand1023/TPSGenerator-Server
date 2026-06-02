@@ -9,7 +9,6 @@ import io.kunkun.mockserver.config.MockServerProperties;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -47,12 +46,20 @@ public class MockEndpointService {
     // Immutable defaults holder to prevent race conditions
     private final AtomicReference<DefaultConfig> defaults;
 
-    @Value("${mock.config.file:mock-endpoints.json}")
-    private String configFilePath;
+    /**
+     * Cached immutable default {@link MockEndpointConfig}. A load target mostly hits
+     * unconfigured paths, so allocating a fresh default config (plus a HashMap) on every
+     * such request was pure hot-path garbage. Rebuilt only when {@link #updateDefaults} runs.
+     */
+    private final AtomicReference<MockEndpointConfig> defaultConfigCache;
+
+    /** Single persistence mechanism: enabled flag + file path, sourced from {@link MockServerProperties}. */
+    private volatile boolean persistenceEnabled;
+    private volatile String configFilePath;
 
     private final ObjectMapper objectMapper;
 
-    /** Serializes concurrent calls to persistToFile so the .tmp file is never written by two threads at once. */
+    /** Serializes concurrent calls to the file writer so the .tmp file is never written by two threads at once. */
     private final ReentrantLock persistLock = new ReentrantLock();
 
     public MockEndpointService(MockServerProperties properties) {
@@ -60,15 +67,17 @@ public class MockEndpointService {
         this.endpointConfigs = Caffeine.newBuilder()
                 .maximumSize(properties.getMaxEndpointConfigs())
                 .build();
-        this.defaults = new AtomicReference<>(new DefaultConfig(
+        DefaultConfig initialDefaults = new DefaultConfig(
                 properties.getDefaultMinDelay(),
                 properties.getDefaultMaxDelay(),
                 properties.getDefaultErrorRate()
-        ));
+        );
+        this.defaults = new AtomicReference<>(initialDefaults);
+        this.defaultConfigCache = new AtomicReference<>(buildDefaultConfig(initialDefaults));
         this.objectMapper = new ObjectMapper();
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-        // Default configFilePath for non-Spring contexts (unit tests); overridden by @Value in Spring context
-        this.configFilePath = "mock-endpoints.json";
+        this.persistenceEnabled = properties.getPersistence().isEnabled();
+        this.configFilePath = properties.getPersistence().getFilePath();
     }
 
     /** Package-private setter to allow unit tests to redirect file I/O to a temp path. */
@@ -76,7 +85,33 @@ public class MockEndpointService {
         this.configFilePath = configFilePath;
     }
 
+    /** Package-private setter to allow unit tests to toggle persistence without a Spring context. */
+    void setPersistenceEnabled(boolean persistenceEnabled) {
+        this.persistenceEnabled = persistenceEnabled;
+    }
+
+    public boolean isPersistenceEnabled() {
+        return persistenceEnabled;
+    }
+
+    public String getPersistenceFilePath() {
+        return configFilePath;
+    }
+
+    /** On startup, auto-load persisted configs only when persistence is enabled. */
     @PostConstruct
+    public void loadOnStartup() {
+        if (persistenceEnabled) {
+            loadFromFile();
+        } else {
+            logger.info("Configuration persistence is disabled");
+        }
+    }
+
+    /**
+     * Explicitly (re)loads configurations from the configured file, replacing nothing that
+     * isn't present in the file (entries are merged/overwritten by key). Safe to call directly.
+     */
     public void loadFromFile() {
         File file = new File(configFilePath);
         if (!file.exists()) {
@@ -146,9 +181,27 @@ public class MockEndpointService {
     }
 
     public MockEndpointConfig getEffectiveConfig(String path) {
-        String normalizedPath = normalizePath(path);
-        MockEndpointConfig config = endpointConfigs.getIfPresent(normalizedPath);
+        MockEndpointConfig config = findConfig(path);
         return config != null ? config : createDefaultConfig();
+    }
+
+    /**
+     * Returns the explicitly-configured config for {@code path}, or {@code null} if the path
+     * is unconfigured. Lets the hot path do a single cache lookup and decide both the effective
+     * config and whether the path is a known endpoint (for bounded metric tagging).
+     */
+    public MockEndpointConfig findConfig(String path) {
+        return endpointConfigs.getIfPresent(normalizePath(path));
+    }
+
+    /** True if {@code path} maps to an explicitly-configured endpoint. */
+    public boolean isConfigured(String path) {
+        return findConfig(path) != null;
+    }
+
+    /** Shared immutable default config (see {@link #defaultConfigCache}). */
+    public MockEndpointConfig getDefaultConfig() {
+        return defaultConfigCache.get();
     }
 
     /**
@@ -187,6 +240,32 @@ public class MockEndpointService {
         return existed;
     }
 
+    /** Auto-save hook for mutations; a no-op unless persistence is enabled. */
+    private void persistToFile() {
+        if (persistenceEnabled) {
+            writeToFile();
+        }
+    }
+
+    /**
+     * Explicitly saves the current configuration snapshot to the configured file,
+     * regardless of the enabled flag (callers gate on {@link #isPersistenceEnabled()}).
+     * @return true if the write succeeded
+     */
+    public boolean saveToFile() {
+        return writeToFile();
+    }
+
+    /**
+     * Clears the in-memory cache and reloads it from the configured file.
+     * @return the number of endpoints loaded
+     */
+    public int reloadFromFile() {
+        endpointConfigs.invalidateAll();
+        loadFromFile();
+        return getConfiguredEndpointCount();
+    }
+
     /**
      * Serializes the full cache snapshot to the configured JSON file.
      * Writes to a .tmp file first, then renames for near-atomic replacement.
@@ -194,7 +273,7 @@ public class MockEndpointService {
      * (e.g. when source and target are on different filesystems).
      * Uses a lock so concurrent write operations don't collide on the .tmp file.
      */
-    private void persistToFile() {
+    private boolean writeToFile() {
         persistLock.lock();
         try {
             File target = new File(configFilePath);
@@ -213,21 +292,28 @@ public class MockEndpointService {
                 // Fall back to non-atomic replace when crossing filesystem boundaries
                 Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
+            return true;
         } catch (IOException e) {
             File target = new File(configFilePath);
             logger.warn("Failed to persist mock-endpoint configs to '{}': {}", target.getAbsolutePath(), e.getMessage());
+            return false;
         } finally {
             persistLock.unlock();
         }
     }
 
+    /** Returns the shared cached default config. Retained for backward compatibility. */
     public MockEndpointConfig createDefaultConfig() {
-        DefaultConfig current = defaults.get();
+        return defaultConfigCache.get();
+    }
+
+    /** Builds an immutable default config from the current defaults (empty, unmodifiable headers). */
+    private static MockEndpointConfig buildDefaultConfig(DefaultConfig d) {
         return new MockEndpointConfig(
-                current.minDelay,
-                current.maxDelay,
-                current.errorRate,
-                new HashMap<>(),
+                d.minDelay,
+                d.maxDelay,
+                d.errorRate,
+                java.util.Collections.emptyMap(),
                 "Default response"
         );
     }
@@ -237,7 +323,7 @@ public class MockEndpointService {
         // Individual scalar constraints are also enforced by JSR-380 @RequestParam annotations in
         // the controller so HTTP callers get consistent 400 responses before reaching this method.
         // The service-layer checks here protect programmatic (non-HTTP) callers.
-        defaults.updateAndGet(current -> {
+        DefaultConfig updated = defaults.updateAndGet(current -> {
             int newMinDelay = minDelay != null ? minDelay : current.minDelay;
             int newMaxDelay = maxDelay != null ? maxDelay : current.maxDelay;
             double newErrorRate = errorRate != null ? errorRate : current.errorRate;
@@ -257,6 +343,8 @@ public class MockEndpointService {
 
             return new DefaultConfig(newMinDelay, newMaxDelay, newErrorRate);
         });
+        // Rebuild the cached immutable default so the hot path keeps reusing one instance.
+        defaultConfigCache.set(buildDefaultConfig(updated));
     }
 
     public int getCurrentMinDelay() {

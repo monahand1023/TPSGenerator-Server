@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -42,6 +43,15 @@ public class StatisticsService {
 
     private final Timer requestTimer;
     private final MeterRegistry meterRegistry;
+
+    // Cached per-endpoint meter handles. The hot path used to rebuild a Counter/Timer builder
+    // and re-register it on every request; these maps resolve the meter once per endpoint label.
+    // Callers pass a BOUNDED label (configured endpoints + a single "(unmatched)" bucket), so
+    // these maps cannot grow without bound from caller-controlled paths.
+    private final ConcurrentHashMap<String, Counter> receivedCounters = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Counter> successCounters = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Counter> failureCounters = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Timer> endpointTimers = new ConcurrentHashMap<>();
 
     public StatisticsService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -113,62 +123,65 @@ public class StatisticsService {
     // -----------------------------------------------------------------------
 
     /**
-     * Increments the per-endpoint request counter in addition to the global counters.
-     * Call {@link #recordRequest()} separately to keep the global counters in sync.
+     * Increments the per-endpoint "received" counter.
      *
-     * @param endpoint the request path (used as a Micrometer tag value)
+     * <p>This is a SEPARATE metric name from the success/failure counter on purpose. Previously
+     * a bare {@code mock_server_endpoint_requests_total{endpoint}} (no {@code result} tag) was
+     * registered here while success/failure used the same name WITH a {@code result} tag — an
+     * inconsistent label set on one metric name, which double-counts and makes Prometheus
+     * reject the series. "Received" now lives under its own consistent name.
+     *
+     * @param endpoint bounded endpoint label (Micrometer tag value)
      */
     public void recordRequest(String endpoint) {
-        Counter.builder("mock_server_endpoint_requests_total")
-                .tag("endpoint", endpoint)
-                .description("Requests per endpoint")
-                .register(meterRegistry)
-                .increment();
+        receivedCounters.computeIfAbsent(endpoint, e ->
+                Counter.builder("mock_server_endpoint_requests_received_total")
+                        .tag("endpoint", e)
+                        .description("Requests received per endpoint")
+                        .register(meterRegistry)
+        ).increment();
     }
 
     /**
-     * Increments the per-endpoint success counter.
-     * Call {@link #recordSuccess()} separately to keep the global counters in sync.
-     *
-     * @param endpoint the request path (used as a Micrometer tag value)
+     * Increments the per-endpoint success counter ({@code result=success}).
+     * @param endpoint bounded endpoint label (Micrometer tag value)
      */
     public void recordSuccess(String endpoint) {
-        Counter.builder("mock_server_endpoint_requests_total")
-                .tag("endpoint", endpoint)
-                .tag("result", "success")
-                .description("Requests per endpoint")
-                .register(meterRegistry)
-                .increment();
+        successCounters.computeIfAbsent(endpoint, e ->
+                Counter.builder("mock_server_endpoint_requests_total")
+                        .tag("endpoint", e)
+                        .tag("result", "success")
+                        .description("Completed requests per endpoint")
+                        .register(meterRegistry)
+        ).increment();
     }
 
     /**
-     * Increments the per-endpoint failure counter.
-     * Call {@link #recordFailure()} separately to keep the global counters in sync.
-     *
-     * @param endpoint the request path (used as a Micrometer tag value)
+     * Increments the per-endpoint failure counter ({@code result=failure}).
+     * @param endpoint bounded endpoint label (Micrometer tag value)
      */
     public void recordFailure(String endpoint) {
-        Counter.builder("mock_server_endpoint_requests_total")
-                .tag("endpoint", endpoint)
-                .tag("result", "failure")
-                .description("Requests per endpoint")
-                .register(meterRegistry)
-                .increment();
+        failureCounters.computeIfAbsent(endpoint, e ->
+                Counter.builder("mock_server_endpoint_requests_total")
+                        .tag("endpoint", e)
+                        .tag("result", "failure")
+                        .description("Completed requests per endpoint")
+                        .register(meterRegistry)
+        ).increment();
     }
 
     /**
      * Records per-endpoint request latency.
-     * Call {@link #recordProcessingTime(long)} separately to keep the global timer in sync.
-     *
      * @param processingTimeMs processing time in milliseconds
-     * @param endpoint         the request path (used as a Micrometer tag value)
+     * @param endpoint         bounded endpoint label (Micrometer tag value)
      */
     public void recordProcessingTime(long processingTimeMs, String endpoint) {
-        Timer.builder("mock_server_endpoint_request_duration")
-                .tag("endpoint", endpoint)
-                .description("Request duration per endpoint")
-                .register(meterRegistry)
-                .record(processingTimeMs, TimeUnit.MILLISECONDS);
+        endpointTimers.computeIfAbsent(endpoint, e ->
+                Timer.builder("mock_server_endpoint_request_duration")
+                        .tag("endpoint", e)
+                        .description("Request duration per endpoint")
+                        .register(meterRegistry)
+        ).record(processingTimeMs, TimeUnit.MILLISECONDS);
     }
 
     /**

@@ -32,9 +32,22 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Examples](#examples)
 - [Project Structure](#project-structure)
 
-## Security Warning
+## Security
 
-**The Admin API has no authentication.** It must only be deployed on a trusted internal network or behind an authentication proxy. **Never expose the `/admin/*` or `/api/v1/admin/*` endpoints to the public internet.** An unauthenticated caller can change all endpoint behaviors, reset statistics, or overwrite persisted configurations.
+The Admin API is protected by **HTTP Basic Auth**. Both prefixes — `/admin/**` and `/api/v1/admin/**` — require authentication; there is no unauthenticated alias.
+
+- `ADMIN_PASSWORD` is **required** at startup. The application fails fast if it is unset or blank.
+- `ADMIN_USERNAME` defaults to `admin`.
+- The mock endpoints themselves (`/{path}/**`), `/health`, and `/actuator/**` are public so load generators and probes can reach them without credentials.
+
+```bash
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD='choose-a-strong-secret'
+java -jar target/mock-http-server-1.0.0.jar
+# admin calls then require:  curl -u admin:choose-a-strong-secret ...
+```
+
+Even with auth, treat the admin surface as privileged: an authenticated caller can change all endpoint behaviors, reset statistics, and overwrite persisted configurations. Prefer keeping it on a trusted network.
 
 ## Overview
 
@@ -92,6 +105,9 @@ java -jar target/mock-http-server-1.0.0.jar --server.port=9090
 Configure the server via `application.properties` or environment variables:
 
 ```properties
+# Virtual threads (Java 21) — strongly recommended for this sleep-bound server
+spring.threads.virtual.enabled=true
+
 # Default endpoint behavior
 mock-server.default-min-delay=10
 mock-server.default-max-delay=100
@@ -100,7 +116,12 @@ mock-server.default-error-rate=0.0
 # Statistics logging interval (milliseconds)
 mock-server.stats-log-interval-ms=10000
 
-# Configuration persistence
+# Per-endpoint request history (debugging). Off by default — it allocates per request.
+mock-server.history.enabled=false
+
+# Configuration persistence (single mechanism — see Persistence below).
+# When enabled: loaded on startup, auto-saved on every change, and the
+# /admin/persistence/* endpoints can save/reload on demand.
 mock-server.persistence.enabled=false
 mock-server.persistence.file-path=./mock-server-config.json
 
@@ -108,6 +129,8 @@ mock-server.persistence.file-path=./mock-server-config.json
 management.endpoints.web.exposure.include=health,info,metrics,prometheus
 management.endpoint.health.show-details=always
 ```
+
+> **Note on metric cardinality:** per-endpoint metrics are tagged only for *configured* endpoints; all unconfigured paths collapse to a single `endpoint="(unmatched)"` series, so a load test against many random paths cannot blow up the meter registry. Per-endpoint "received" counts are exposed as `mock_server_endpoint_requests_received_total{endpoint}`, separate from the `mock_server_endpoint_requests_total{endpoint,result}` success/failure counter.
 
 ### Endpoint Configuration
 
@@ -472,9 +495,9 @@ src/main/java/io/kunkun/mockserver/
     MockEndpointConfig.java             # Endpoint configuration DTO
     ApiResponse.java                    # Response builder
   service/
-    MockEndpointService.java            # Endpoint management (Caffeine LRU cache)
+    MockEndpointService.java            # Endpoint management (Caffeine LRU cache) + config persistence
     StatisticsService.java              # Statistics tracking
-    ConfigurationPersistenceService.java # Config persistence
+    RequestHistoryService.java          # Per-endpoint request history (debug)
   health/
     MockServerHealthIndicator.java      # Custom health checks
 ```
