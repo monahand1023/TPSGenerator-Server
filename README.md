@@ -141,6 +141,19 @@ You can configure each endpoint with the following parameters:
 - `errorRate`: Probability of returning an error (0.0 to 1.0)
 - `responseHeaders`: Custom headers to include in responses
 - `responseMessage`: Custom message in the response body
+- `delayDistribution`: How the delay is drawn between min/max — `uniform` (default), `normal`, or `lognormal` (long-tailed, more realistic p99s)
+- `statusDistribution`: Optional weighted map of status code → weight, e.g. `{"200": 70, "429": 20, "503": 10}`. When set it takes precedence over `errorRate`; any 2xx counts as success, anything >= 400 as a failure
+
+Example with a realistic status mix and long-tailed latency:
+
+```json
+{
+  "minDelay": 20,
+  "maxDelay": 500,
+  "delayDistribution": "lognormal",
+  "statusDistribution": { "200": 90, "429": 7, "503": 3 }
+}
+```
 
 Example configuration:
 

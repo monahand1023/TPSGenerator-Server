@@ -229,6 +229,57 @@ class MockRequestControllerTest {
         }
     }
 
+    // ========== Status Distribution + Latency Distribution Tests ==========
+
+    @Test
+    void handleRequest_withStatusDistribution_returnsConfiguredErrorStatus() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "dist");
+        config.setStatusDistribution(Map.of("503", 100)); // 100% weight → always 503
+
+        mockMvc.perform(post("/admin/config/dist-error")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/dist-error"))
+                .andExpect(status().is(503))
+                .andExpect(jsonPath("$.status").value("error"));
+    }
+
+    @Test
+    void handleRequest_withStatusDistribution_returnsConfigured2xxAsSuccess() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "created");
+        config.setStatusDistribution(Map.of("201", 100)); // 100% weight → always 201
+
+        mockMvc.perform(post("/admin/config/dist-created")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/dist-created"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.message").value("created"));
+    }
+
+    @Test
+    void handleRequest_withNormalDelayDistribution_staysWithinBounds() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 5, 0.0, new HashMap<>(), "normal");
+        config.setDelayDistribution("normal");
+
+        mockMvc.perform(post("/admin/config/normal-delay")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(get("/normal-delay"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.processingTime", greaterThanOrEqualTo(0)))
+                    .andExpect(jsonPath("$.processingTime", lessThanOrEqualTo(5)));
+        }
+    }
+
     // ========== Statistics Integration Tests ==========
 
     @Test

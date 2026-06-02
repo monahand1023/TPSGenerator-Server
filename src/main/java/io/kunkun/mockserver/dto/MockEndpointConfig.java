@@ -37,6 +37,20 @@ public class MockEndpointConfig {
 
     private String responseMessage;
 
+    /**
+     * Optional weighted distribution of HTTP status codes, keyed by status code as a string
+     * (e.g. {@code {"200": 70, "429": 20, "503": 10}}). When non-empty it takes precedence over
+     * {@link #errorRate}: a status is drawn by weight, and any 2xx counts as success.
+     */
+    private Map<String, Integer> statusDistribution;
+
+    /**
+     * Delay distribution between {@link #minDelay} and {@link #maxDelay}: {@code uniform} (default),
+     * {@code normal}, or {@code lognormal}. Real latency is long-tailed, so {@code lognormal}
+     * produces more realistic p99s than a flat uniform draw.
+     */
+    private String delayDistribution = "uniform";
+
     public MockEndpointConfig() {
     }
 
@@ -116,5 +130,21 @@ public class MockEndpointConfig {
 
     public void setResponseMessage(String responseMessage) {
         this.responseMessage = responseMessage;
+    }
+
+    public Map<String, Integer> getStatusDistribution() {
+        return statusDistribution;
+    }
+
+    public void setStatusDistribution(Map<String, Integer> statusDistribution) {
+        this.statusDistribution = statusDistribution;
+    }
+
+    public String getDelayDistribution() {
+        return delayDistribution;
+    }
+
+    public void setDelayDistribution(String delayDistribution) {
+        this.delayDistribution = delayDistribution;
     }
 }
