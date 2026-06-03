@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ---- build stage ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+# Pinned to the builder's native arch: the output is an arch-independent JAR, so
+# there's no need to re-run the Maven build under emulation for each target platform.
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
