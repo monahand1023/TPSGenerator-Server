@@ -44,6 +44,14 @@ public class MockRequestController {
     private final RequestHistoryService requestHistoryService;
     private final boolean historyEnabled;
 
+    /**
+     * Per-endpoint served-request counts, for the "degrade after N requests" scenario. Keyed by the
+     * bounded endpoint label (configured endpoints + one "(unmatched)" bucket), so it can't grow
+     * without bound from caller-controlled paths.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicLong>
+            endpointRequestCounts = new java.util.concurrent.ConcurrentHashMap<>();
+
     public MockRequestController(
             MockEndpointService endpointService,
             StatisticsService statisticsService,
@@ -106,9 +114,20 @@ public class MockRequestController {
             delay = (int) Math.min(plannedDelay, (System.nanoTime() - sleepStart) / 1_000_000L);
         }
 
+        // Stateful degradation: after N served requests, switch to the degraded error rate.
+        double effectiveErrorRate = config.getErrorRate();
+        if (matched != null && config.getDegradeAfterRequests() > 0) {
+            long served = endpointRequestCounts
+                    .computeIfAbsent(endpointLabel, k -> new java.util.concurrent.atomic.AtomicLong())
+                    .incrementAndGet();
+            if (served > config.getDegradeAfterRequests()) {
+                effectiveErrorRate = config.getDegradedErrorRate();
+            }
+        }
+
         // Choose the response status: a configured weighted status distribution wins; otherwise
-        // the binary errorRate (200 vs 500). 2xx/3xx is treated as success, >=400 as failure.
-        int status = chooseStatus(config);
+        // the (possibly degraded) errorRate (200 vs 500). 2xx/3xx is success, >=400 is failure.
+        int status = chooseStatus(config, effectiveErrorRate);
         recordHistory(request.getMethod(), endpointLabel, headers, requestBody, status, delay);
         if (status >= 200 && status < 400) {
             return handleSuccess(requestId, delay, config, headers, requestParams, requestBody, endpointLabel, status);
@@ -151,7 +170,7 @@ public class MockRequestController {
      * Chooses an HTTP status code. If a non-empty weighted {@code statusDistribution} is configured
      * it is sampled by weight; otherwise the legacy {@code errorRate} decides between 200 and 500.
      */
-    private int chooseStatus(MockEndpointConfig config) {
+    private int chooseStatus(MockEndpointConfig config, double effectiveErrorRate) {
         Map<String, Integer> dist = config.getStatusDistribution();
         if (dist != null && !dist.isEmpty()) {
             int total = 0;
@@ -182,8 +201,7 @@ public class MockRequestController {
                 }
             }
         }
-        double errorRate = config.getErrorRate();
-        if (errorRate > 0.0 && ThreadLocalRandom.current().nextDouble() < errorRate) {
+        if (effectiveErrorRate > 0.0 && ThreadLocalRandom.current().nextDouble() < effectiveErrorRate) {
             return HttpStatus.INTERNAL_SERVER_ERROR.value();
         }
         return HttpStatus.OK.value();

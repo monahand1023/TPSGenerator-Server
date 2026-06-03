@@ -77,6 +77,19 @@ public class MockEndpointConfig {
     @Max(value = 1, message = "faultRate must be at most 1.0")
     private double faultRate = 0.0;
 
+    /**
+     * Stateful degradation: once this endpoint has served more than {@code degradeAfterRequests}
+     * requests (since server start), its error rate switches to {@link #degradedErrorRate}. Models
+     * a backend that degrades over time (cache exhaustion, resource leak). 0 disables it.
+     */
+    @Min(value = 0, message = "degradeAfterRequests must be non-negative")
+    private long degradeAfterRequests = 0;
+
+    /** Error rate applied once {@link #degradeAfterRequests} is exceeded. */
+    @Min(value = 0, message = "degradedErrorRate must be at least 0.0")
+    @Max(value = 1, message = "degradedErrorRate must be at most 1.0")
+    private double degradedErrorRate = 0.0;
+
     public MockEndpointConfig() {
     }
 
@@ -204,5 +217,21 @@ public class MockEndpointConfig {
 
     public void setFaultRate(double faultRate) {
         this.faultRate = faultRate;
+    }
+
+    public long getDegradeAfterRequests() {
+        return degradeAfterRequests;
+    }
+
+    public void setDegradeAfterRequests(long degradeAfterRequests) {
+        this.degradeAfterRequests = degradeAfterRequests;
+    }
+
+    public double getDegradedErrorRate() {
+        return degradedErrorRate;
+    }
+
+    public void setDegradedErrorRate(double degradedErrorRate) {
+        this.degradedErrorRate = degradedErrorRate;
     }
 }

@@ -366,6 +366,27 @@ class MockRequestControllerTest {
                 .andExpect(content().string(""));
     }
 
+    // ========== Stateful Degradation Tests ==========
+
+    @Test
+    void handleRequest_degradesAfterThreshold() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "x");
+        config.setDegradeAfterRequests(3);
+        config.setDegradedErrorRate(1.0); // after 3 requests, always error
+
+        mockMvc.perform(post("/admin/config/degrade")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        // First 3 requests succeed (count 1..3, not yet past threshold)
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(get("/degrade")).andExpect(status().isOk());
+        }
+        // 4th request (count 4 > 3) is degraded to a guaranteed error
+        mockMvc.perform(get("/degrade")).andExpect(status().isInternalServerError());
+    }
+
     // ========== Statistics Integration Tests ==========
 
     @Test
