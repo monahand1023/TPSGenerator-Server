@@ -374,6 +374,21 @@ POST /admin/persistence/load
 
 Note: Persistence must be enabled in `application.properties` for save/load operations to work.
 
+### Import from OpenAPI
+
+Bulk-create endpoints from an OpenAPI/Swagger document (JSON):
+
+```
+POST /admin/openapi/import
+```
+
+The request body is the OpenAPI document. Each entry under `paths` becomes a mock endpoint using
+the current defaults, with the response message taken from the operation `summary` and, when present,
+the response body taken from a declared `application/json` `example`. Returns the imported paths.
+
+> Paths are matched exactly, so templated paths (e.g. `/users/{id}`) are registered literally and
+> won't match concrete request paths — static paths import cleanly.
+
 ## API Versioning
 
 All admin endpoints are available with a versioned prefix:

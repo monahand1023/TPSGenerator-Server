@@ -327,6 +327,36 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.defaultErrorRate").value(0.1));
     }
 
+    // ========== OpenAPI Import Tests ==========
+
+    @Test
+    void openApiImport_createsEndpoints() throws Exception {
+        String spec = objectMapper.writeValueAsString(java.util.Map.of(
+                "paths", java.util.Map.of(
+                        "/imported-ep", java.util.Map.of(
+                                "get", java.util.Map.of("summary", "Imported endpoint")))));
+
+        mockMvc.perform(post("/admin/openapi/import").with(ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(spec))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.importedCount").value(1));
+
+        mockMvc.perform(get("/admin/config/imported-ep").with(ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseMessage").value("Imported endpoint"));
+    }
+
+    @Test
+    void openApiImport_withoutPaths_returnsBadRequest() throws Exception {
+        mockMvc.perform(post("/admin/openapi/import").with(ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"openapi\":\"3.0.0\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("error"));
+    }
+
     // ========== Persistence Status Tests ==========
 
     @Test

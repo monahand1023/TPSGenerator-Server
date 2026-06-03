@@ -4,6 +4,7 @@ import io.kunkun.mockserver.dto.ApiResponse;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
 import io.kunkun.mockserver.dto.RequestRecord;
 import io.kunkun.mockserver.service.MockEndpointService;
+import io.kunkun.mockserver.service.OpenApiImportService;
 import io.kunkun.mockserver.service.RequestHistoryService;
 import io.kunkun.mockserver.service.StatisticsService;
 import org.springframework.http.ResponseEntity;
@@ -29,14 +30,17 @@ public class AdminController {
     private final MockEndpointService endpointService;
     private final StatisticsService statisticsService;
     private final RequestHistoryService requestHistoryService;
+    private final OpenApiImportService openApiImportService;
 
     public AdminController(
             MockEndpointService endpointService,
             StatisticsService statisticsService,
-            RequestHistoryService requestHistoryService) {
+            RequestHistoryService requestHistoryService,
+            OpenApiImportService openApiImportService) {
         this.endpointService = endpointService;
         this.statisticsService = statisticsService;
         this.requestHistoryService = requestHistoryService;
+        this.openApiImportService = openApiImportService;
     }
 
     // ========== Endpoint Configuration ==========
@@ -216,6 +220,26 @@ public class AdminController {
                         .with("filePath", endpointService.getPersistenceFilePath())
                         .build()
         );
+    }
+
+    // ========== OpenAPI Import ==========
+
+    @PostMapping("/openapi/import")
+    public ResponseEntity<Map<String, Object>> importOpenApi(@RequestBody Map<String, Object> spec) {
+        try {
+            List<String> imported = openApiImportService.importSpec(spec);
+            return ResponseEntity.ok(
+                    ApiResponse.success()
+                            .withMessage("Imported " + imported.size() + " endpoints from OpenAPI spec")
+                            .with("importedCount", imported.size())
+                            .with("endpoints", imported)
+                            .build()
+            );
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error().withMessage(e.getMessage()).build()
+            );
+        }
     }
 
     // ========== Request History ==========
