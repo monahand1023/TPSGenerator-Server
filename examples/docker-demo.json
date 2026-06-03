@@ -1,0 +1,13 @@
+{
+  "name": "docker-demo",
+  "targetServiceUrl": "http://server:8080",
+  "testDuration": "10s",
+  "warmupDuration": "1s",
+  "trafficPattern": { "type": "stable", "targetTps": 500 },
+  "requestTemplates": [
+    { "name": "getUsers", "weight": 70, "method": "GET", "urlTemplate": "http://server:8080/api/users" },
+    { "name": "createOrder", "weight": 30, "method": "POST", "urlTemplate": "http://server:8080/api/orders", "bodyTemplate": "{\"id\":${id}}" }
+  ],
+  "parameterSources": { "id": { "type": "random", "range": [1, 100000] } },
+  "metrics": { "resourceMonitoring": { "enabled": true, "sampleInterval": "1s" } }
+}

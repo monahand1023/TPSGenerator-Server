@@ -9,6 +9,7 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Building and Running](#building-and-running)
+- [Docker](#docker)
 - [Configuration](#configuration)
   - [Application Properties](#application-properties)
   - [Endpoint Configuration](#endpoint-configuration)
@@ -103,6 +104,50 @@ By default, the server runs on port 8080. You can change this by setting the `se
 ```bash
 java -jar target/mock-http-server-1.0.0.jar --server.port=9090
 ```
+
+## Docker
+
+A published image is available from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/monahand1023/tpsgenerator-server:latest
+```
+
+`ADMIN_PASSWORD` is required (the server refuses to start without it); `ADMIN_USERNAME`
+defaults to `admin`. `/actuator/health` is public, admin endpoints need basic auth.
+
+```bash
+docker run --rm -p 8080:8080 -e ADMIN_PASSWORD=choose-a-strong-secret \
+  ghcr.io/monahand1023/tpsgenerator-server:latest
+
+# any extra Spring args pass straight through:
+docker run --rm -p 9090:9090 -e ADMIN_PASSWORD=secret \
+  ghcr.io/monahand1023/tpsgenerator-server:latest --server.port=9090
+```
+
+The image is multi-stage (build with Maven + JDK 21, run on a JRE 21 base), runs as a
+non-root user, and ships a `HEALTHCHECK` against `/actuator/health`. To build it locally:
+
+```bash
+docker build -t mock-http-server .
+```
+
+### One-command demo (compose)
+
+`docker-compose.yml` brings up the server and, under the `demo` profile, fires a short load
+test at it with the [client image](https://github.com/monahand1023/TPSGenerator):
+
+```bash
+docker compose up                            # just the mock server on :8080
+ADMIN_PASSWORD=secret docker compose up       # with a chosen admin password
+
+docker compose --profile demo up --abort-on-container-exit
+# server starts -> becomes healthy -> client runs a 10s load test (summary in the loadtest logs)
+```
+
+Images are published automatically by `.github/workflows/docker-publish.yml` on every push
+to `master` and on `v*` tags. (New GHCR packages start private — flip to public in the
+package settings if you want anonymous `docker pull`.)
 
 ## Configuration
 

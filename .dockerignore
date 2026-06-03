@@ -1,0 +1,22 @@
+# Build output (the image builds from source in a clean stage)
+target/
+demo-results/
+
+# VCS / IDE / OS
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Logs and local state
+logs/
+*.log
+dashboard-runs.json
+mock-server-config.json
+mock-endpoints.json*
+
+# Docs not needed in the build context
+docs/
+*.md

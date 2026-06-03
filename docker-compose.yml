@@ -1,0 +1,35 @@
+# One-command demo: bring up the mock server, and (with `--profile demo`) fire a
+# short load test at it using the published client image.
+#
+#   docker compose up                      # just the mock server on :8080
+#   docker compose --profile demo up       # server + a 10s load test (see loadtest logs)
+#
+# `image:` is set to the GHCR name so the same file works against published images;
+# `docker compose build` (or `up --build`) builds the server locally from this repo.
+
+services:
+  server:
+    image: ghcr.io/monahand1023/tpsgenerator-server:latest
+    build: .
+    environment:
+      # Override in your shell: `ADMIN_PASSWORD=secret docker compose up`.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  loadtest:
+    image: ghcr.io/monahand1023/tpsgenerator:latest
+    depends_on:
+      server:
+        condition: service_healthy
+    volumes:
+      - ./examples/docker-demo.json:/work/demo.json:ro
+    # Args are <config> <output-dir>; the run summary prints to stdout (compose logs).
+    command: ["/work/demo.json", "/work/results"]
+    profiles: ["demo"]
