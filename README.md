@@ -423,6 +423,30 @@ All admin endpoints are available with a versioned prefix:
 | `/admin/stats/reset` | `/api/v1/admin/stats/reset` |
 | `/admin/persistence/*` | `/api/v1/admin/persistence/*` |
 
+## Live Dashboard
+
+A self-contained web UI is served at `/dashboard` that polls and renders running/finished load-test
+runs (TPS, success rate, p50/p95/p99, status codes, resources) in real time. The TPS Generator
+client streams to it automatically when its `dashboard` block is enabled.
+
+Ingestion endpoints (used by the client): `POST /api/tests/register`, `/api/metrics/update`,
+`/api/tests/finish`, `/api/tests/result`. Read endpoints (used by the UI): `GET /api/tests`,
+`GET /api/tests/{id}`.
+
+```properties
+# Optional: require a key on ingestion POSTs (read endpoints + UI stay open)
+dashboard.api-key=${DASHBOARD_API_KEY:}
+dashboard.max-runs=100
+
+# Optional: persist finished runs to a flat JSON file so they survive a restart (not a database)
+dashboard.persist=false
+dashboard.persist-file=./dashboard-runs.json
+```
+
+With `dashboard.persist=true`, finished runs are written to `dashboard-runs.json` on completion and
+reloaded on startup. This is a simple file snapshot for convenience — the authoritative run history
+remains the client's JSON/CSV exports (which are also mergeable/diffable).
+
 ## Monitoring
 
 ### Health Checks

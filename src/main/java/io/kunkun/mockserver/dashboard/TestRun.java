@@ -1,11 +1,14 @@
 package io.kunkun.mockserver.dashboard;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.Map;
 
 /**
  * An in-memory record of a single load-test run reported by a TPS Generator client.
  * Populated incrementally: register -> periodic metric updates -> finish / final result.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TestRun {
 
     private String testId;
