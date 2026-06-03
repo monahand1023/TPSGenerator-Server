@@ -45,11 +45,21 @@ public class AdminController {
 
     // ========== Endpoint Configuration ==========
 
-    @PostMapping("/config/{path}")
+    /**
+     * Spring's {@code {*path}} capturing variable matches the rest of the URL including slashes,
+     * but prepends a leading slash (e.g. {@code /api/users}). Strip it so multi-segment paths
+     * behave identically to single-segment ones and response messages read cleanly.
+     */
+    private static String capturedPath(String path) {
+        return (path != null && path.startsWith("/")) ? path.substring(1) : path;
+    }
+
+    @PostMapping("/config/{*path}")
     public ResponseEntity<Map<String, Object>> configureEndpoint(
             @PathVariable String path,
             @RequestBody @Valid MockEndpointConfig config) {
 
+        path = capturedPath(path);
         endpointService.configureEndpoint(path, config);
 
         return ResponseEntity.ok(
@@ -60,9 +70,9 @@ public class AdminController {
         );
     }
 
-    @GetMapping("/config/{path}")
+    @GetMapping("/config/{*path}")
     public ResponseEntity<MockEndpointConfig> getEndpointConfig(@PathVariable String path) {
-        return endpointService.getEndpointConfig(path)
+        return endpointService.getEndpointConfig(capturedPath(path))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -77,8 +87,9 @@ public class AdminController {
         );
     }
 
-    @DeleteMapping("/config/{path}")
+    @DeleteMapping("/config/{*path}")
     public ResponseEntity<Map<String, Object>> deleteEndpointConfig(@PathVariable String path) {
+        path = capturedPath(path);
         boolean deleted = endpointService.deleteEndpoint(path);
 
         if (deleted) {
@@ -255,8 +266,9 @@ public class AdminController {
         );
     }
 
-    @GetMapping("/history/{path}")
+    @GetMapping("/history/{*path}")
     public ResponseEntity<Map<String, Object>> getHistoryForEndpoint(@PathVariable String path) {
+        path = capturedPath(path);
         List<RequestRecord> records = requestHistoryService.getHistory(path);
         if (records.isEmpty()) {
             return ResponseEntity.status(404).body(
@@ -274,8 +286,9 @@ public class AdminController {
         );
     }
 
-    @DeleteMapping("/history/{path}")
+    @DeleteMapping("/history/{*path}")
     public ResponseEntity<Map<String, Object>> clearHistoryForEndpoint(@PathVariable String path) {
+        path = capturedPath(path);
         requestHistoryService.clearHistory(path);
         return ResponseEntity.ok(
                 ApiResponse.success()

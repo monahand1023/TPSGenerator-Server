@@ -93,9 +93,9 @@ class MockRequestControllerTest {
 
     @Test
     void handleRequest_withNestedPath_usesFullPath() throws Exception {
-        // Configure a nested path directly via the service (AdminController only
-        // supports single-segment {path} variables; multi-segment paths must be
-        // seeded programmatically in tests).
+        // Seed the nested path directly via the service to keep this test focused on the
+        // mock controller's path matching. (Configuring it through the admin HTTP API with a
+        // multi-segment path is covered by AdminControllerTest.)
         MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "Nested response");
         endpointService.configureEndpoint("api/v1/users", config);
 

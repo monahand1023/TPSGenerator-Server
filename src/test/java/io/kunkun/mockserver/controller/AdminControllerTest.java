@@ -118,6 +118,60 @@ class AdminControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    // ========== Multi-Segment Path Tests ==========
+
+    @Test
+    void configureEndpoint_withMultiSegmentPath_isConfiguredAndServed() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "Multi-segment response");
+
+        // Configure a multi-segment path through the admin HTTP API.
+        mockMvc.perform(post("/admin/config/api/users").with(ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.message").value("Endpoint configured: /api/users"));
+
+        // It is retrievable via the admin GET on the same multi-segment path.
+        mockMvc.perform(get("/admin/config/api/users").with(ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.responseMessage").value("Multi-segment response"));
+
+        // And it actually serves on the real multi-segment request path.
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Multi-segment response"));
+    }
+
+    @Test
+    void deleteEndpointConfig_withMultiSegmentPath_deletes() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "to-delete");
+
+        mockMvc.perform(post("/admin/config/api/orders").with(ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/admin/config/api/orders").with(ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.message").value(containsString("deleted")));
+
+        mockMvc.perform(get("/admin/config/api/orders").with(ADMIN))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getHistoryForEndpoint_withMultiSegmentPath_routesToHandler() throws Exception {
+        // No history recorded for this multi-segment path, so the handler returns its own 404.
+        // The point is that the route binds the full path instead of falling through to the
+        // catch-all mock controller (which would answer 200 with a success envelope).
+        mockMvc.perform(get("/admin/history/api/widgets").with(ADMIN))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value("error"))
+                .andExpect(jsonPath("$.message").value("No history found for endpoint: /api/widgets"));
+    }
+
     // ========== Default Configuration Tests ==========
 
     @Test

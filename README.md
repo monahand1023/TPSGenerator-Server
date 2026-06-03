@@ -216,6 +216,9 @@ Configure a specific endpoint path:
 POST /admin/config/{path}
 ```
 
+`{path}` may contain multiple segments, so nested paths work directly — e.g.
+`POST /admin/config/api/v2/users` configures the endpoint served at `/api/v2/users`.
+
 Request body:
 ```json
 {
@@ -606,9 +609,6 @@ and the client-side latency tracked the configured `lognormal` delays (p99 of 41
 10–60 ms `/orders` band). The 0.28% measured error rate matches the 1% error rate applied to the
 30% of traffic hitting `/orders` — i.e. the per-endpoint `errorRate` and `delayDistribution`
 controls behaved exactly as configured under load.
-
-> Note: `POST /admin/config/{path}` only binds a **single** path segment, so endpoints must be
-> configured with single-segment names (`users`, not `api/users`).
 
 ## Project Structure
 
