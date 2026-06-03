@@ -1,5 +1,7 @@
 package io.kunkun.mockserver.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,10 +16,55 @@ import static org.junit.jupiter.api.Assertions.*;
 class StatisticsServiceTest {
 
     private StatisticsService service;
+    private SimpleMeterRegistry registry;
 
     @BeforeEach
     void setUp() {
-        service = new StatisticsService(new SimpleMeterRegistry());
+        registry = new SimpleMeterRegistry();
+        service = new StatisticsService(registry);
+    }
+
+    // ========== Per-Endpoint Metric Tests ==========
+
+    @Test
+    void perEndpointReceivedCounter_usesItsOwnMetricName() {
+        service.recordRequest("users");
+        service.recordRequest("users");
+
+        Counter c = registry.find("mock_server_endpoint_requests_received_total")
+                .tag("endpoint", "users").counter();
+        assertNotNull(c, "received counter should be registered");
+        assertEquals(2.0, c.count());
+    }
+
+    @Test
+    void perEndpointSuccessFailure_useResultTagOnAConsistentMetric() {
+        service.recordSuccess("orders");
+        service.recordFailure("orders");
+
+        Counter success = registry.find("mock_server_endpoint_requests_total")
+                .tag("endpoint", "orders").tag("result", "success").counter();
+        Counter failure = registry.find("mock_server_endpoint_requests_total")
+                .tag("endpoint", "orders").tag("result", "failure").counter();
+
+        assertNotNull(success);
+        assertEquals(1.0, success.count());
+        assertNotNull(failure);
+        assertEquals(1.0, failure.count());
+        // "received" must NOT share the success/failure metric name (that inconsistent label set
+        // was the original Prometheus-rejecting bug); it lives under a separate name.
+        assertTrue(registry.find("mock_server_endpoint_requests_received_total")
+                .tag("endpoint", "orders").counter() == null);
+    }
+
+    @Test
+    void perEndpointProcessingTime_recordsATimer() {
+        service.recordProcessingTime(50, "search");
+
+        Timer t = registry.find("mock_server_endpoint_request_duration")
+                .tag("endpoint", "search").timer();
+        assertNotNull(t);
+        assertEquals(1L, t.count());
     }
 
     // ========== Basic Statistics Tests ==========

@@ -299,6 +299,81 @@ class MockRequestControllerTest {
                 .andExpect(jsonPath("$.status").value("success"));
     }
 
+    @Test
+    void handleRequest_withWeightedStatusDistribution_returnsBothStatuses() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "x");
+        config.setStatusDistribution(Map.of("200", 50, "500", 50));
+
+        mockMvc.perform(post("/admin/config/dist-mix")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        // Over many requests a ~50/50 split must produce at least one of each (cumulative-weight loop).
+        boolean saw200 = false;
+        boolean saw500 = false;
+        for (int i = 0; i < 60 && !(saw200 && saw500); i++) {
+            int sc = mockMvc.perform(get("/dist-mix")).andReturn().getResponse().getStatus();
+            if (sc == 200) saw200 = true;
+            if (sc == 500) saw500 = true;
+        }
+        assertTrue(saw200, "expected some 200s");
+        assertTrue(saw500, "expected some 500s");
+    }
+
+    @Test
+    void handleRequest_withLognormalDelay_staysWithinBounds() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 5, 0.0, new HashMap<>(), "lognormal");
+        config.setDelayDistribution("lognormal");
+
+        mockMvc.perform(post("/admin/config/lognormal-delay")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(get("/lognormal-delay"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.processingTime", greaterThanOrEqualTo(0)))
+                    .andExpect(jsonPath("$.processingTime", lessThanOrEqualTo(5)));
+        }
+    }
+
+    @Test
+    void handleRequest_responseHeaders_skipForbiddenAndStripCrLf() throws Exception {
+        Map<String, Object> headers = new HashMap<>();
+        headers.put("Content-Length", "99999");          // framework-managed → must be skipped
+        headers.put("X-Test", "a\r\nInjected: bad");      // CR/LF → must be stripped
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, headers, "hdr");
+
+        mockMvc.perform(post("/admin/config/hdr-filter")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/hdr-filter"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Test", "aInjected: bad"))   // CR/LF stripped
+                .andExpect(header().doesNotExist("Injected"));            // not split into a new header
+    }
+
+    @Test
+    void handleRequest_faultModeNone_returnsNormalResponse() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "normal-body");
+        config.setFaultMode("malformed");
+        config.setFaultRate(0.0); // never fires
+
+        mockMvc.perform(post("/admin/config/fault-off")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/fault-off"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.message").value("normal-body"));
+    }
+
     // ========== Custom Response Body + Size Tests ==========
 
     @Test
