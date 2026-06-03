@@ -29,6 +29,9 @@ public class MockRequestController {
     /** Upper bound on padded response size, so a misconfigured responseSizeBytes can't OOM the JVM. */
     private static final int MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024;
 
+    /** Truncated/invalid JSON returned by the "malformed" fault mode. */
+    private static final String MALFORMED_JSON_BODY = "{\"status\":\"ok\",\"data\":";
+
     /**
      * Response headers a caller may NOT override — they are managed by the framework/transport,
      * and overriding them produces malformed or duplicate headers.
@@ -263,6 +266,16 @@ public class MockRequestController {
 
         if (logger.isDebugEnabled()) {
             logger.debug("Completed request #{}: Status {} - Response time: {}ms", requestId, status, delay);
+        }
+
+        // Network-level fault injection: with probability faultRate, return an empty or malformed
+        // body (status/headers unchanged) so clients can be tested against bad responses.
+        String faultMode = config.getFaultMode();
+        if (faultMode != null && !"none".equalsIgnoreCase(faultMode)
+                && config.getFaultRate() > 0.0
+                && ThreadLocalRandom.current().nextDouble() < config.getFaultRate()) {
+            String faultBody = "empty".equalsIgnoreCase(faultMode) ? "" : MALFORMED_JSON_BODY;
+            return responseBuilder.body(faultBody);
         }
 
         // Clamp the requested size so a huge/typo'd value can't exhaust the heap on a load target.

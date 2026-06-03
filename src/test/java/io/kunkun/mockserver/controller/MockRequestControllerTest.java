@@ -332,6 +332,40 @@ class MockRequestControllerTest {
                 "body should be padded to at least 256 bytes");
     }
 
+    // ========== Fault Injection Tests ==========
+
+    @Test
+    void handleRequest_withMalformedFault_returnsInvalidBody() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "x");
+        config.setFaultMode("malformed");
+        config.setFaultRate(1.0); // always
+
+        mockMvc.perform(post("/admin/config/fault-malformed")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/fault-malformed"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("{\"status\":\"ok\",\"data\":"));
+    }
+
+    @Test
+    void handleRequest_withEmptyFault_returnsEmptyBody() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "x");
+        config.setFaultMode("empty");
+        config.setFaultRate(1.0);
+
+        mockMvc.perform(post("/admin/config/fault-empty")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/fault-empty"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+    }
+
     // ========== Statistics Integration Tests ==========
 
     @Test

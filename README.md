@@ -145,6 +145,7 @@ You can configure each endpoint with the following parameters:
 - `statusDistribution`: Optional weighted map of status code → weight, e.g. `{"200": 70, "429": 20, "503": 10}`. When set it takes precedence over `errorRate`; any 2xx counts as success, anything >= 400 as a failure
 - `responseBody`: Optional raw response body for success responses (replaces the JSON envelope). Supports `${requestId}`, `${timestamp}`, `${random}` placeholders
 - `responseSizeBytes`: Optional minimum body size in bytes; the body is padded with filler to at least this size (stresses client deserialization/bandwidth)
+- `faultMode` + `faultRate`: Inject network-level faults on successful responses — `faultMode` is `none` (default), `empty` (empty body), or `malformed` (invalid/truncated JSON); `faultRate` (0.0–1.0) is the probability a given response is replaced by the fault
 
 Example with a realistic status mix and long-tailed latency:
 

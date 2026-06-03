@@ -64,6 +64,19 @@ public class MockEndpointConfig {
      */
     private int responseSizeBytes = 0;
 
+    /**
+     * Network-level fault to inject on successful responses: {@code none} (default), {@code empty}
+     * (return an empty body), or {@code malformed} (return invalid/truncated JSON). Applied with
+     * probability {@link #faultRate}, so a portion of otherwise-200 responses carry bad bodies —
+     * useful for testing client deserialization/error handling.
+     */
+    private String faultMode = "none";
+
+    /** Probability (0.0–1.0) that a successful response is replaced by the configured fault. */
+    @Min(value = 0, message = "faultRate must be at least 0.0")
+    @Max(value = 1, message = "faultRate must be at most 1.0")
+    private double faultRate = 0.0;
+
     public MockEndpointConfig() {
     }
 
@@ -175,5 +188,21 @@ public class MockEndpointConfig {
 
     public void setResponseSizeBytes(int responseSizeBytes) {
         this.responseSizeBytes = responseSizeBytes;
+    }
+
+    public String getFaultMode() {
+        return faultMode;
+    }
+
+    public void setFaultMode(String faultMode) {
+        this.faultMode = faultMode;
+    }
+
+    public double getFaultRate() {
+        return faultRate;
+    }
+
+    public void setFaultRate(double faultRate) {
+        this.faultRate = faultRate;
     }
 }
