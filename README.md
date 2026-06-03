@@ -30,6 +30,7 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
   - [Metrics](#metrics)
 - [Using with TPS Generator](#using-with-tps-generator)
 - [Examples](#examples)
+- [Benchmark / Sample Run](#benchmark--sample-run)
 - [Project Structure](#project-structure)
 
 ## Security
@@ -568,6 +569,46 @@ curl http://localhost:8080/admin/stats
 ```bash
 curl http://localhost:8080/actuator/health
 ```
+
+## Benchmark / Sample Run
+
+A loopback run driven by the [TPS Generator](https://github.com/monahand1023/TPSGenerator) client,
+used to confirm the server holds up under sustained load and that its configured latency/error
+behavior actually shows up at the client. Client and server ran on the **same machine** (loopback),
+so these are tooling-validation numbers, not a production capacity figure.
+
+**Environment:** Apple Silicon (Mac16,11), 14 cores, 64 GB RAM, macOS 26.5, OpenJDK 21.0.11,
+virtual threads enabled (`server.tomcat.threads...` / Loom — recommended for this sleep-bound server).
+
+**Endpoints under test** (configured via the Admin API):
+
+```bash
+curl -u admin:*** -X POST http://localhost:18080/admin/config/users \
+  -d '{"minDelay":5,"maxDelay":25,"errorRate":0.0,"delayDistribution":"lognormal"}'
+curl -u admin:*** -X POST http://localhost:18080/admin/config/orders \
+  -d '{"minDelay":10,"maxDelay":60,"errorRate":0.01,"delayDistribution":"lognormal"}'
+```
+
+**Load:** 2,000 TPS stable for 20 s (2 s warmup); 70% `GET /users`, 30% `POST /orders`.
+
+**Results**
+
+| Metric | Value |
+|---|---|
+| Total requests served | 40,007 |
+| Server-reported success rate | 99.72% (111 `5xx`) |
+| Sustained throughput | ~2,000 TPS (peak 2,015) |
+| Client-observed p50 / p95 / p99 | 12 / 31 / 41 ms |
+| Client-observed max | 61 ms |
+
+The server sustained 2,000 requests/second with no thread-pool exhaustion or dropped connections,
+and the client-side latency tracked the configured `lognormal` delays (p99 of 41 ms inside the
+10–60 ms `/orders` band). The 0.28% measured error rate matches the 1% error rate applied to the
+30% of traffic hitting `/orders` — i.e. the per-endpoint `errorRate` and `delayDistribution`
+controls behaved exactly as configured under load.
+
+> Note: `POST /admin/config/{path}` only binds a **single** path segment, so endpoints must be
+> configured with single-segment names (`users`, not `api/users`).
 
 ## Project Structure
 
