@@ -3,6 +3,7 @@ package io.kunkun.mockserver.controller;
 import io.kunkun.mockserver.config.MockServerProperties;
 import io.kunkun.mockserver.dto.ApiResponse;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
+import io.kunkun.mockserver.dto.MockRule;
 import io.kunkun.mockserver.dto.RequestRecord;
 import io.kunkun.mockserver.service.MockEndpointService;
 import io.kunkun.mockserver.service.RequestHistoryService;
@@ -14,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -112,6 +114,16 @@ public class MockRequestController {
             Thread.currentThread().interrupt();
             // We slept less than planned; report the actual elapsed time, not the planned delay.
             delay = (int) Math.min(plannedDelay, (System.nanoTime() - sleepStart) / 1_000_000L);
+        }
+
+        // Request-matching rules take precedence over the status/error-rate behavior.
+        if (matched != null && config.getRules() != null && !config.getRules().isEmpty()) {
+            MockRule rule = matchRule(config.getRules(), request.getMethod(), headers, requestParams, requestBody);
+            if (rule != null) {
+                int ruleStatus = (rule.getStatus() >= 100 && rule.getStatus() <= 999) ? rule.getStatus() : 200;
+                recordHistory(request.getMethod(), endpointLabel, headers, requestBody, ruleStatus, delay);
+                return handleRuleResponse(requestId, delay, rule, ruleStatus, endpointLabel);
+            }
         }
 
         // Stateful degradation: after N served requests, switch to the degraded error rate.
@@ -267,20 +279,9 @@ public class MockRequestController {
         statisticsService.recordProcessingTime(delay);
         statisticsService.recordProcessingTime(delay, endpoint);
 
-        // Build response with custom headers, skipping framework-managed ones and stripping
-        // CR/LF to prevent response-header injection from a malicious/typo'd config value.
+        // Build response with custom headers (framework-managed headers skipped, CR/LF stripped).
         ResponseEntity.BodyBuilder responseBuilder = ResponseEntity.status(status);
-        for (Map.Entry<String, Object> header : config.getResponseHeaders().entrySet()) {
-            String name = header.getKey();
-            if (name == null || FORBIDDEN_RESPONSE_HEADERS.contains(name.toLowerCase())) {
-                continue;
-            }
-            if (name.indexOf('\r') >= 0 || name.indexOf('\n') >= 0) {
-                continue;
-            }
-            String value = String.valueOf(header.getValue()).replace("\r", "").replace("\n", "");
-            responseBuilder.header(name, value);
-        }
+        applyResponseHeaders(responseBuilder, config.getResponseHeaders());
 
         if (logger.isDebugEnabled()) {
             logger.debug("Completed request #{}: Status {} - Response time: {}ms", requestId, status, delay);
@@ -322,6 +323,100 @@ public class MockRequestController {
         }
 
         return responseBuilder.body(response.build());
+    }
+
+    /** Returns the first rule whose criteria all match the request, or null if none match. */
+    private MockRule matchRule(List<MockRule> rules, String method, Map<String, String> headers,
+                              Map<String, String> params, String body) {
+        for (MockRule rule : rules) {
+            if (rule.getMethod() != null && !rule.getMethod().equalsIgnoreCase(method)) {
+                continue;
+            }
+            if (!allMatch(rule.getHeaderMatch(), name -> headerValueIgnoreCase(headers, name))) {
+                continue;
+            }
+            if (!allMatch(rule.getQueryMatch(), params::get)) {
+                continue;
+            }
+            if (rule.getBodyContains() != null && !rule.getBodyContains().isEmpty()
+                    && (body == null || !body.contains(rule.getBodyContains()))) {
+                continue;
+            }
+            return rule;
+        }
+        return null;
+    }
+
+    /** True if every required (key,value) is present and equal per the supplied value lookup. */
+    private static boolean allMatch(Map<String, String> required, java.util.function.Function<String, String> lookup) {
+        if (required == null || required.isEmpty()) {
+            return true;
+        }
+        for (Map.Entry<String, String> e : required.entrySet()) {
+            String actual = lookup.apply(e.getKey());
+            if (actual == null || !actual.equals(e.getValue())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String headerValueIgnoreCase(Map<String, String> headers, String name) {
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            if (e.getKey().equalsIgnoreCase(name)) {
+                return e.getValue();
+            }
+        }
+        return null;
+    }
+
+    /** Builds the response for a matched rule (raw body or JSON envelope), recording stats by status. */
+    private ResponseEntity<Object> handleRuleResponse(long requestId, int delay, MockRule rule,
+                                                      int status, String endpoint) {
+        boolean success = status >= 200 && status < 400;
+        if (success) {
+            statisticsService.recordSuccess();
+            statisticsService.recordSuccess(endpoint);
+        } else {
+            statisticsService.recordFailure();
+            statisticsService.recordFailure(endpoint);
+        }
+        statisticsService.recordProcessingTime(delay);
+        statisticsService.recordProcessingTime(delay, endpoint);
+
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(status);
+        applyResponseHeaders(builder, rule.getResponseHeaders());
+
+        if (rule.getResponseBody() != null) {
+            return builder.body(substitutePlaceholders(rule.getResponseBody(), requestId));
+        }
+        String message = rule.getResponseMessage() != null
+                ? rule.getResponseMessage()
+                : (success ? "Matched rule" : "Simulated error");
+        Map<String, Object> body = (success ? ApiResponse.success() : ApiResponse.error())
+                .withMessage(message)
+                .withRequestId(requestId)
+                .withProcessingTime(delay)
+                .build();
+        return builder.body(body);
+    }
+
+    /** Applies custom response headers, skipping framework-managed ones and stripping CR/LF. */
+    private static void applyResponseHeaders(ResponseEntity.BodyBuilder builder, Map<String, Object> headers) {
+        if (headers == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> header : headers.entrySet()) {
+            String name = header.getKey();
+            if (name == null || FORBIDDEN_RESPONSE_HEADERS.contains(name.toLowerCase())) {
+                continue;
+            }
+            if (name.indexOf('\r') >= 0 || name.indexOf('\n') >= 0) {
+                continue;
+            }
+            String value = String.valueOf(header.getValue()).replace("\r", "").replace("\n", "");
+            builder.header(name, value);
+        }
     }
 
     /** Substitutes ${requestId}/${timestamp}/${random} placeholders in a custom response body. */

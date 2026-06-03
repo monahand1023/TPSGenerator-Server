@@ -147,6 +147,18 @@ You can configure each endpoint with the following parameters:
 - `responseSizeBytes`: Optional minimum body size in bytes; the body is padded with filler to at least this size (stresses client deserialization/bandwidth)
 - `faultMode` + `faultRate`: Inject network-level faults on successful responses — `faultMode` is `none` (default), `empty` (empty body), or `malformed` (invalid/truncated JSON); `faultRate` (0.0–1.0) is the probability a given response is replaced by the fault
 - `degradeAfterRequests` + `degradedErrorRate`: Stateful degradation — after the endpoint has served `degradeAfterRequests` requests, its error rate switches to `degradedErrorRate` (models a backend degrading over time: cache exhaustion, resource leak). 0 disables it
+- `rules`: Ordered request-matching rules. The first rule whose criteria all match the request supplies the response; otherwise the endpoint default applies. Each rule may match on `method`, `headerMatch` (name→value, case-insensitive name), `queryMatch` (name→value), `bodyContains` (substring), and returns a `status` (default 200), `responseBody` (raw, templated) or `responseMessage` (envelope), and `responseHeaders`
+
+Example with rules (WireMock-style):
+
+```json
+{
+  "rules": [
+    { "method": "POST", "bodyContains": "ping", "status": 202, "responseBody": "pong" },
+    { "headerMatch": { "X-Tier": "premium" }, "responseMessage": "premium response" }
+  ]
+}
+```
 
 Example with a realistic status mix and long-tailed latency:
 

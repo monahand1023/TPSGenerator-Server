@@ -2,6 +2,7 @@ package io.kunkun.mockserver.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kunkun.mockserver.dto.MockEndpointConfig;
+import io.kunkun.mockserver.dto.MockRule;
 import io.kunkun.mockserver.service.MockEndpointService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
@@ -330,6 +332,60 @@ class MockRequestControllerTest {
                 .andReturn();
         assertTrue(res.getResponse().getContentAsString().length() >= 256,
                 "body should be padded to at least 256 bytes");
+    }
+
+    // ========== Request-Matching Rules Tests ==========
+
+    @Test
+    void handleRequest_withMatchingRule_returnsRuleResponse_elseDefault() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "default");
+        MockRule rule = new MockRule();
+        rule.setMethod("POST");
+        rule.setBodyContains("ping");
+        rule.setStatus(202);
+        rule.setResponseBody("pong");
+        config.setRules(List.of(rule));
+
+        mockMvc.perform(post("/admin/config/rules-ep")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        // Matching request (POST + body contains "ping") → the rule's response
+        mockMvc.perform(post("/rules-ep")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"x\":\"ping\"}"))
+                .andExpect(status().is(202))
+                .andExpect(content().string("pong"));
+
+        // Non-matching request (GET) → falls back to the endpoint default
+        mockMvc.perform(get("/rules-ep"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("default"));
+    }
+
+    @Test
+    void handleRequest_withHeaderMatchingRule_selectsRule() throws Exception {
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "default");
+        MockRule rule = new MockRule();
+        rule.setHeaderMatch(Map.of("X-Tier", "premium"));
+        rule.setStatus(200);
+        rule.setResponseMessage("premium-path");
+        config.setRules(List.of(rule));
+
+        mockMvc.perform(post("/admin/config/rules-hdr")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/rules-hdr").header("X-Tier", "premium"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("premium-path"));
+
+        // Header absent → default
+        mockMvc.perform(get("/rules-hdr"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("default"));
     }
 
     // ========== Fault Injection Tests ==========

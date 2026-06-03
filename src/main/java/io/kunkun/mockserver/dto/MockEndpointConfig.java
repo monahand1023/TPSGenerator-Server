@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -89,6 +90,13 @@ public class MockEndpointConfig {
     @Min(value = 0, message = "degradedErrorRate must be at least 0.0")
     @Max(value = 1, message = "degradedErrorRate must be at most 1.0")
     private double degradedErrorRate = 0.0;
+
+    /**
+     * Optional ordered request-matching rules. The first rule whose criteria match the request
+     * (method/headers/query/body) supplies the response; if none match, the endpoint's default
+     * behaviour applies.
+     */
+    private List<MockRule> rules;
 
     public MockEndpointConfig() {
     }
@@ -233,5 +241,13 @@ public class MockEndpointConfig {
 
     public void setDegradedErrorRate(double degradedErrorRate) {
         this.degradedErrorRate = degradedErrorRate;
+    }
+
+    public List<MockRule> getRules() {
+        return rules;
+    }
+
+    public void setRules(List<MockRule> rules) {
+        this.rules = rules;
     }
 }
