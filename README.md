@@ -389,6 +389,22 @@ the response body taken from a declared `application/json` `example`. Returns th
 > Paths are matched exactly, so templated paths (e.g. `/users/{id}`) are registered literally and
 > won't match concrete request paths — static paths import cleanly.
 
+## Record / Replay Proxy
+
+Point the mock at a real upstream and let it capture responses:
+
+```properties
+mock-server.proxy.enabled=true
+mock-server.proxy.upstream-url=https://api.example.com
+mock-server.proxy.record=true
+```
+
+When enabled, a request to an **unconfigured** path is forwarded to `upstream-url` (same path +
+query), the upstream response is returned to the caller, and — when `record=true` — it is captured
+as a mock endpoint (body, status, `Content-Type`, and a fixed delay equal to the observed upstream
+latency). The path is then configured, so subsequent requests **replay** the captured response
+without contacting the upstream. Configured endpoints are always served locally and never proxied.
+
 ## API Versioning
 
 All admin endpoints are available with a versioned prefix:

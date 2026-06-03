@@ -35,6 +35,16 @@ public class MockServerProperties {
 
     private Persistence persistence = new Persistence();
 
+    private Proxy proxy = new Proxy();
+
+    public Proxy getProxy() {
+        return proxy;
+    }
+
+    public void setProxy(Proxy proxy) {
+        this.proxy = proxy;
+    }
+
     public History getHistory() {
         return history;
     }
@@ -112,6 +122,41 @@ public class MockServerProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+    }
+
+    /**
+     * Record/replay proxy: when enabled, requests to unconfigured paths are forwarded to an
+     * upstream; the response is returned to the caller and (when {@code record} is true) captured
+     * as a mock endpoint so subsequent requests replay it without hitting the upstream.
+     */
+    public static class Proxy {
+        private boolean enabled = false;
+        private String upstreamUrl;
+        private boolean record = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getUpstreamUrl() {
+            return upstreamUrl;
+        }
+
+        public void setUpstreamUrl(String upstreamUrl) {
+            this.upstreamUrl = upstreamUrl;
+        }
+
+        public boolean isRecord() {
+            return record;
+        }
+
+        public void setRecord(boolean record) {
+            this.record = record;
         }
     }
 

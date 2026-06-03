@@ -6,6 +6,7 @@ import io.kunkun.mockserver.dto.MockEndpointConfig;
 import io.kunkun.mockserver.dto.MockRule;
 import io.kunkun.mockserver.dto.RequestRecord;
 import io.kunkun.mockserver.service.MockEndpointService;
+import io.kunkun.mockserver.service.ProxyService;
 import io.kunkun.mockserver.service.RequestHistoryService;
 import io.kunkun.mockserver.service.StatisticsService;
 import org.slf4j.Logger;
@@ -44,6 +45,7 @@ public class MockRequestController {
     private final MockEndpointService endpointService;
     private final StatisticsService statisticsService;
     private final RequestHistoryService requestHistoryService;
+    private final ProxyService proxyService;
     private final boolean historyEnabled;
 
     /**
@@ -58,10 +60,12 @@ public class MockRequestController {
             MockEndpointService endpointService,
             StatisticsService statisticsService,
             RequestHistoryService requestHistoryService,
+            ProxyService proxyService,
             MockServerProperties properties) {
         this.endpointService = endpointService;
         this.statisticsService = statisticsService;
         this.requestHistoryService = requestHistoryService;
+        this.proxyService = proxyService;
         this.historyEnabled = properties.getHistory().isEnabled();
     }
 
@@ -102,6 +106,12 @@ public class MockRequestController {
 
         // Per-endpoint request counter (bounded label)
         statisticsService.recordRequest(endpointLabel);
+
+        // Record/replay proxy: forward unconfigured paths to the upstream (and capture for replay).
+        // Once recorded, the path becomes configured and replays without proxying again.
+        if (matched == null && proxyService.isEnabled()) {
+            return proxyService.handle(request, requestBody, headers, endpointLabel);
+        }
 
         // Apply delay (uniform/normal/lognormal). On a virtual thread this blocking sleep
         // unmounts the carrier, so many in-flight delayed requests share few OS threads.
