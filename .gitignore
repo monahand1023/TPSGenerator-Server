@@ -43,3 +43,7 @@ mock-endpoints.json.tmp
 # Local secrets — never commit
 .env
 .env.local
+
+### Logs ###
+logs/
+*.log
