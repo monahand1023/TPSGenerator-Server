@@ -57,19 +57,24 @@ The server lets you configure how each endpoint behaves, including response time
 
 ## Features
 
-- **Configurable Endpoints**: Create mock endpoints with specific behavior characteristics
-- **Response Time Simulation**: Configure min/max response times to simulate network latency
-- **Controlled Error Rates**: Set precise error rates to test error handling
-- **Custom Headers and Responses**: Configure custom headers and response messages
-- **Statistics Tracking**: Monitor request counts, success/failure rates in real-time
-- **Admin API**: Manage configuration and view statistics through a REST API
-- **Request Logging**: Detailed logging of requests and responses
-- **API Versioning**: Versioned API endpoints (`/api/v1/admin/*`)
-- **Configuration Persistence**: Save and load endpoint configurations to/from disk
-- **Health Checks**: Spring Boot Actuator health endpoints with custom indicators
-- **Metrics Integration**: Micrometer metrics for Prometheus and other monitoring systems
-- **Path Normalization**: Case-insensitive endpoint matching with trailing slash handling
-- **Memory Management**: LRU cache with configurable limits to prevent unbounded memory growth
+- **Configurable Endpoints**: Per-endpoint response times, error rates, headers, and messages
+- **Latency Distributions**: `uniform` (default), `normal`, or `lognormal` delay between min/max
+- **Weighted Status Codes**: Return a configured distribution of status codes (e.g. 70% 200, 20% 429, 10% 503)
+- **Response Templating + Size Control**: Custom/templated bodies and minimum-size padding
+- **Fault Injection**: Probabilistically return empty or malformed bodies
+- **Stateful Degradation**: Switch to a degraded error rate after N served requests
+- **Request-Matching Rules**: WireMock-style rules on method/header/query/body select the response
+- **OpenAPI Import**: Bulk-create endpoints from an OpenAPI/Swagger spec
+- **Record/Replay Proxy**: Forward unconfigured paths to an upstream and capture them for replay
+- **Live Dashboard**: Self-contained UI at `/dashboard` plus an ingestion API for the load client
+- **Security**: HTTP Basic Auth on all admin endpoints (`ADMIN_PASSWORD` required at startup)
+- **Statistics & Metrics**: Real-time counts/success rates; Micrometer/Prometheus with bounded per-endpoint cardinality
+- **Configuration Persistence**: Single mechanism — load on startup, auto-save on change, save/reload via admin API
+- **Health Checks**: Spring Boot Actuator health endpoints with a custom indicator
+- **Virtual Threads (Java 21)**: Sleep-bound hot path scales to tens of thousands of in-flight requests
+- **Path Normalization**: Case-insensitive matching with trailing-slash handling
+- **Memory Management**: Caffeine LRU cache with configurable limits
+- **API Versioning**: All admin endpoints available under `/api/v1/admin/*`
 
 ## Getting Started
 
@@ -544,22 +549,32 @@ curl http://localhost:8080/actuator/health
 
 ```
 src/main/java/io/kunkun/mockserver/
-  MockHttpServerApplication.java        # Application entry point
+  MockHttpServerApplication.java         # Application entry point
   config/
-    MockServerProperties.java           # Configuration properties
+    MockServerProperties.java            # Config properties (history, persistence, proxy)
   controller/
-    AdminController.java                # Admin API endpoints
-    MockRequestController.java          # Mock request handling
-    GlobalExceptionHandler.java         # Error handling
+    AdminController.java                  # Admin API (+ OpenAPI import)
+    MockRequestController.java            # Mock request hot path (delay/status/rules/faults/proxy)
+    GlobalExceptionHandler.java          # Error handling
   dto/
-    MockEndpointConfig.java             # Endpoint configuration DTO
-    ApiResponse.java                    # Response builder
+    MockEndpointConfig.java              # Endpoint configuration DTO
+    MockRule.java                        # Request-matching rule
+    RequestRecord.java                   # Request-history record
+    ApiResponse.java                     # Response builder
   service/
-    MockEndpointService.java            # Endpoint management (Caffeine LRU cache) + config persistence
-    StatisticsService.java              # Statistics tracking
-    RequestHistoryService.java          # Per-endpoint request history (debug)
+    MockEndpointService.java             # Endpoint management (Caffeine LRU) + config persistence
+    StatisticsService.java               # Statistics + Micrometer metrics
+    RequestHistoryService.java           # Per-endpoint request history (debug)
+    OpenApiImportService.java            # OpenAPI/Swagger import
+    ProxyService.java                    # Record/replay proxy
+  dashboard/
+    DashboardController.java             # Dashboard ingestion API + live UI (/dashboard)
+    DashboardService.java                # Bounded in-memory run store
+    TestRun.java                         # Dashboard run model
+  security/
+    SecurityConfig.java                  # HTTP Basic Auth for /admin/**
   health/
-    MockServerHealthIndicator.java      # Custom health checks
+    MockServerHealthIndicator.java       # Custom health indicator
 ```
 
 ## Framework Notes

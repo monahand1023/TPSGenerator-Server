@@ -82,3 +82,17 @@ Both repos build and test green on JDK 21 (`/opt/homebrew/opt/openjdk@21`). Serv
 ## Execution order & status
 
 Phases run in order 1→6; within a phase, items are independent and grouped into focused commits. Progress tracked in the session task list (Phase 1–6 tasks). Each phase ends with a green `mvn clean test` in the affected repo(s) before moving on.
+
+## Status: COMPLETE
+
+All phases shipped and verified (server 150 tests, client 379 tests, all green on JDK 21; both working trees clean). Committed directly to `master` on each repo (solo projects).
+
+- Phase 1–4, 5, 5b, 6 — done.
+- 15 runtime bugs found and fixed along the way (several only surfaced by end-to-end runs: the ramp-rate stall, the `ADMIN_*` circular-placeholder startup crash, the health-at-zero false DEGRADED, the dashboard/circuit-breaker NPEs).
+- Verified with live end-to-end runs: the client→server dashboard link, and the record/replay proxy across two server instances.
+
+**Consciously deferred (with reasons):**
+- gRPC client driver — needs a specific protobuf service definition, not a generic capability.
+- Live-coordinated distributed daemon — implemented as result-merge instead (run N nodes at `targetTps/N`, then `merge`), which is the correct aggregation without a coordinator/worker protocol.
+- `BodyHandlers.ofByteArray`/`discarding` — the response body is genuinely used (error sampling, validation, size), so the switch is high-ripple for a conditional win.
+- `RequestTracker` per-request map churn — provides observable in-flight tracking; left as-is.
