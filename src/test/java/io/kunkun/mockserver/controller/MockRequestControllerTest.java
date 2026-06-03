@@ -280,6 +280,23 @@ class MockRequestControllerTest {
         }
     }
 
+    @Test
+    void handleRequest_withInvalidStatusDistributionKey_fallsBackToSuccess() throws Exception {
+        // A key like "50" is not a valid HTTP status; it must NOT blow up into a 400 — it
+        // falls back to 200 (regression for the ResponseEntity.status(invalid) crash).
+        MockEndpointConfig config = new MockEndpointConfig(0, 1, 0.0, new HashMap<>(), "x");
+        config.setStatusDistribution(Map.of("50", 100));
+
+        mockMvc.perform(post("/admin/config/bad-status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(config)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/bad-status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"));
+    }
+
     // ========== Custom Response Body + Size Tests ==========
 
     @Test

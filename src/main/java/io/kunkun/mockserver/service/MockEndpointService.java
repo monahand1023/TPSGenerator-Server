@@ -296,6 +296,8 @@ public class MockEndpointService {
         } catch (IOException e) {
             File target = new File(configFilePath);
             logger.warn("Failed to persist mock-endpoint configs to '{}': {}", target.getAbsolutePath(), e.getMessage());
+            // Don't leave a partial/orphaned .tmp behind on failure.
+            new File(configFilePath + ".tmp").delete();
             return false;
         } finally {
             persistLock.unlock();

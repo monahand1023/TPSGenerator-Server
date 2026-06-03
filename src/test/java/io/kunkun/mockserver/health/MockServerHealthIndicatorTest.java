@@ -120,9 +120,9 @@ class MockServerHealthIndicatorTest {
     }
 
     @Test
-    void health_noRequests_successRateIsZero_isDegraded() {
-        // When no requests have been recorded, calculateSuccessRate() returns 0.0
-        // 0.0 < 0.1 → DEGRADED (intentional: this signals a configured high-error-rate endpoint)
+    void health_noRequests_isUp_notDegraded() {
+        // With zero traffic, successRate is 0.0 but that is NOT a 100% error rate — a freshly
+        // started server must report UP, not DEGRADED (the error-rate check is gated on total>0).
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         StatisticsService stats = new StatisticsService(meterRegistry);
         MockEndpointService endpoints = new MockEndpointService(defaultProperties());
@@ -130,6 +130,6 @@ class MockServerHealthIndicatorTest {
         MockServerHealthIndicator indicator = new MockServerHealthIndicator(stats, endpoints);
         Health health = indicator.health();
 
-        assertEquals("DEGRADED", health.getStatus().getCode());
+        assertEquals(Status.UP, health.getStatus());
     }
 }

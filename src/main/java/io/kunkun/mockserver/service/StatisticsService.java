@@ -95,6 +95,11 @@ public class StatisticsService {
         return requestCounter.incrementAndGet();
     }
 
+    /** Current (resettable) total request count — used by the health indicator. */
+    public long getTotalRequests() {
+        return totalRequests.get();
+    }
+
     public void recordRequest() {
         totalRequests.incrementAndGet();
         lifetimeTotalRequests.incrementAndGet();

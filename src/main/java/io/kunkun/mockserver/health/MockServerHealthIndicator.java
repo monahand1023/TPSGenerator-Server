@@ -26,6 +26,7 @@ public class MockServerHealthIndicator implements HealthIndicator {
 
     @Override
     public Health health() {
+        long totalRequests = statisticsService.getTotalRequests();
         double successRate = statisticsService.calculateSuccessRate();
         int configuredEndpoints = endpointService.getConfiguredEndpointCount();
 
@@ -34,9 +35,9 @@ public class MockServerHealthIndicator implements HealthIndicator {
                 .withDetail("configuredEndpoints", configuredEndpoints)
                 .withDetail("status", "Mock server is operational");
 
-        // If error rate is extremely high (>90%), report as degraded
-        // This would indicate intentional high error rate configuration
-        if (successRate < (1 - UNHEALTHY_ERROR_RATE_THRESHOLD)) {
+        // Only evaluate the error-rate threshold once there is traffic. With zero requests the
+        // success rate is 0.0, which must NOT be treated as a 100% error rate (a fresh server is UP).
+        if (totalRequests > 0 && successRate < (1 - UNHEALTHY_ERROR_RATE_THRESHOLD)) {
             builder = Health.status("DEGRADED")
                     .withDetail("successRate", String.format("%.2f%%", successRate * 100))
                     .withDetail("configuredEndpoints", configuredEndpoints)

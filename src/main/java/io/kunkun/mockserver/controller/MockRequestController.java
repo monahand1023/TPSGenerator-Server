@@ -26,6 +26,9 @@ public class MockRequestController {
     /** Single bounded bucket for all unconfigured paths, so metric/history cardinality stays bounded. */
     private static final String UNMATCHED_ENDPOINT = "(unmatched)";
 
+    /** Upper bound on padded response size, so a misconfigured responseSizeBytes can't OOM the JVM. */
+    private static final int MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024;
+
     /**
      * Response headers a caller may NOT override — they are managed by the framework/transport,
      * and overriding them produces malformed or duplicate headers.
@@ -136,7 +139,8 @@ public class MockRequestController {
             }
             case "uniform":
             default:
-                return ThreadLocalRandom.current().nextInt(min, max + 1);
+                // Use long arithmetic so max == Integer.MAX_VALUE doesn't overflow (max + 1).
+                return (int) ThreadLocalRandom.current().nextLong(min, (long) max + 1L);
         }
     }
 
@@ -164,7 +168,10 @@ public class MockRequestController {
                     cumulative += w;
                     if (r < cumulative) {
                         try {
-                            return Integer.parseInt(entry.getKey().trim());
+                            int parsed = Integer.parseInt(entry.getKey().trim());
+                            // Only emit codes ResponseEntity/HttpStatusCode accept ([100,999]);
+                            // anything else (e.g. "0", "50", "-1") would throw and turn into a 400.
+                            return (parsed >= 100 && parsed <= 999) ? parsed : HttpStatus.OK.value();
                         } catch (NumberFormatException ex) {
                             return HttpStatus.OK.value();
                         }
@@ -258,7 +265,8 @@ public class MockRequestController {
             logger.debug("Completed request #{}: Status {} - Response time: {}ms", requestId, status, delay);
         }
 
-        int targetSize = config.getResponseSizeBytes();
+        // Clamp the requested size so a huge/typo'd value can't exhaust the heap on a load target.
+        int targetSize = Math.min(config.getResponseSizeBytes(), MAX_RESPONSE_BODY_BYTES);
 
         // Custom raw body mode (templated) takes precedence over the default JSON envelope.
         if (config.getResponseBody() != null) {
