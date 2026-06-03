@@ -107,7 +107,7 @@ java -jar target/mock-http-server-1.0.0.jar --server.port=9090
 
 ## Docker
 
-A published image is available from GitHub Container Registry:
+A public image is available from GitHub Container Registry — no login required to pull:
 
 ```bash
 docker pull ghcr.io/monahand1023/tpsgenerator-server:latest
@@ -146,8 +146,8 @@ docker compose --profile demo up --abort-on-container-exit
 ```
 
 Images are published automatically by `.github/workflows/docker-publish.yml` on every push
-to `master` and on `v*` tags. (New GHCR packages start private — flip to public in the
-package settings if you want anonymous `docker pull`.)
+to `master` and on `v*` tags. The package is **public**, so anyone can `docker pull` it
+without authenticating; both `linux/amd64` and `linux/arm64` are built.
 
 ## Configuration
 
