@@ -4,8 +4,27 @@
 
 A configurable mock HTTP server for simulating API behavior with controlled response times, error rates, and custom responses. This is the companion for the TPS Generator load testing tool, found here: https://github.com/monahand1023/TPSGenerator
 
+## How it works
+
+```mermaid
+flowchart LR
+    LG["Load generator<br/>(TPSGenerator or any client)"] -->|"any method, any path"| Match["Normalize path,<br/>look up endpoint<br/>(Caffeine LRU)"]
+    Match -->|"configured"| Rules["Request-matching rules<br/>method · header · query · body"]
+    Rules --> Delay["Delay<br/>uniform · normal · lognormal"]
+    Delay --> Status["Status / fault<br/>errorRate · statusDistribution ·<br/>faultMode · degradation"]
+    Status --> Resp["Templated response"]
+    Match -->|"unconfigured,<br/>proxy on"| Proxy["Record/replay proxy<br/>forward upstream, capture as mock"]
+    Match -->|"unconfigured,<br/>proxy off"| Default["Defaults<br/>10–100 ms · 0% errors"]
+    Resp --> Stats["Statistics +<br/>Micrometer / Prometheus"]
+    Admin["Admin API (Basic Auth)<br/>/admin · /api/v1/admin"] -->|"configure · defaults ·<br/>persistence · OpenAPI import"| Match
+    LG -.->|"streams run metrics"| Dash["Live dashboard<br/>/dashboard"]
+```
+
+Every request either hits a configured endpoint (rules → delay → status → templated body), falls through to the record/replay proxy, or gets the defaults. The admin API shapes that behavior at runtime; statistics and Prometheus metrics come out the other side.
+
 ## Table of Contents
 
+- [How it works](#how-it-works)
 - [Overview](#overview)
 - [Features](#features)
 - [Getting Started](#getting-started)
