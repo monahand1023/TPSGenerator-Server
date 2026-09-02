@@ -15,7 +15,7 @@ flowchart TB
     Delay --> Status["Status / fault<br/>errorRate · statusDistribution · faultMode · degradation"]
     Status --> Resp["Templated response"]
     Match -->|"unconfigured, proxy on"| Proxy["Record/replay proxy<br/>forward upstream, capture as a mock"]
-    Match -->|"unconfigured, proxy off"| Default["Defaults: 10–100 ms, 0% errors"]
+    Match -->|"unconfigured, proxy off"| Default["Defaults: 10 to 100 ms, 0% errors"]
     Resp --> Stats["Statistics · Micrometer / Prometheus"]
     LG -.->|"streams run metrics"| Dash["Live dashboard at /dashboard"]
 ```
