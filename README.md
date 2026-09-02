@@ -1,5 +1,7 @@
 # TPS Generator Server
 
+[![Tests](https://github.com/monahand1023/TPSGenerator-Server/actions/workflows/test.yml/badge.svg)](https://github.com/monahand1023/TPSGenerator-Server/actions/workflows/test.yml) [![Docker image](https://img.shields.io/badge/ghcr.io-tpsgenerator--server-2496ED?logo=docker&logoColor=white)](https://github.com/monahand1023/TPSGenerator-Server/pkgs/container/tpsgenerator-server) [![Java 21](https://img.shields.io/badge/Java-21-orange?logo=openjdk)](https://openjdk.org/projects/jdk/21/) [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot) [![License: MIT](https://img.shields.io/github/license/monahand1023/TPSGenerator-Server)](LICENSE)
+
 A configurable mock HTTP server for simulating API behavior with controlled response times, error rates, and custom responses. This is the companion for the TPS Generator load testing tool, found here: https://github.com/monahand1023/TPSGenerator
 
 ## Table of Contents
@@ -9,7 +11,9 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Building and Running](#building-and-running)
+  - [Security](#security)
 - [Docker](#docker)
+  - [One-command demo (compose)](#one-command-demo-compose)
 - [Configuration](#configuration)
   - [Application Properties](#application-properties)
   - [Endpoint Configuration](#endpoint-configuration)
@@ -25,7 +29,10 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
   - [View Statistics](#view-statistics)
   - [Reset Statistics](#reset-statistics)
   - [Persistence](#persistence)
+  - [Import from OpenAPI](#import-from-openapi)
+- [Record / Replay Proxy](#record--replay-proxy)
 - [API Versioning](#api-versioning)
+- [Live Dashboard](#live-dashboard)
 - [Monitoring](#monitoring)
   - [Health Checks](#health-checks)
   - [Metrics](#metrics)
@@ -33,23 +40,7 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
 - [Examples](#examples)
 - [Benchmark / Sample Run](#benchmark--sample-run)
 - [Project Structure](#project-structure)
-
-## Security
-
-The Admin API is protected by **HTTP Basic Auth**. Both prefixes — `/admin/**` and `/api/v1/admin/**` — require authentication; there is no unauthenticated alias.
-
-- `ADMIN_PASSWORD` is **required** at startup. The application fails fast if it is unset or blank.
-- `ADMIN_USERNAME` defaults to `admin`.
-- The mock endpoints themselves (`/{path}/**`), `/health`, and `/actuator/**` are public so load generators and probes can reach them without credentials.
-
-```bash
-export ADMIN_USERNAME=admin
-export ADMIN_PASSWORD='choose-a-strong-secret'
-java -jar target/mock-http-server-1.0.0.jar
-# admin calls then require:  curl -u admin:choose-a-strong-secret ...
-```
-
-Even with auth, treat the admin surface as privileged: an authenticated caller can change all endpoint behaviors, reset statistics, and overwrite persisted configurations. Prefer keeping it on a trusted network.
+- [License](#license)
 
 ## Overview
 
@@ -75,7 +66,7 @@ The server lets you configure how each endpoint behaves, including response time
 - **Health Checks**: Spring Boot Actuator health endpoints with a custom indicator
 - **Virtual Threads (Java 21)**: Sleep-bound hot path scales to tens of thousands of in-flight requests
 - **Path Normalization**: Case-insensitive matching with trailing-slash handling
-- **Memory Management**: Caffeine LRU cache with configurable limits
+- **Memory Management**: Caffeine LRU cache with configurable limits and correct concurrent eviction (an access-order `LinkedHashMap` is not safe under a shared read lock)
 - **API Versioning**: All admin endpoints available under `/api/v1/admin/*`
 
 ## Getting Started
@@ -104,6 +95,23 @@ By default, the server runs on port 8080. You can change this by setting the `se
 ```bash
 java -jar target/mock-http-server-1.0.0.jar --server.port=9090
 ```
+
+### Security
+
+The Admin API is protected by **HTTP Basic Auth**. Both prefixes — `/admin/**` and `/api/v1/admin/**` — require authentication; there is no unauthenticated alias.
+
+- `ADMIN_PASSWORD` is **required** at startup. The application fails fast if it is unset or blank.
+- `ADMIN_USERNAME` defaults to `admin`.
+- The mock endpoints themselves (`/{path}/**`), `/health`, and `/actuator/**` are public so load generators and probes can reach them without credentials.
+
+```bash
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD='choose-a-strong-secret'
+java -jar target/mock-http-server-1.0.0.jar
+# admin calls then require:  curl -u admin:choose-a-strong-secret ...
+```
+
+Even with auth, treat the admin surface as privileged: an authenticated caller can change all endpoint behaviors, reset statistics, and overwrite persisted configurations. Prefer keeping it on a trusted network.
 
 ## Docker
 
@@ -626,7 +634,7 @@ behavior actually shows up at the client. Client and server ran on the **same ma
 so these are tooling-validation numbers, not a production capacity figure.
 
 **Environment:** Apple Silicon (Mac16,11), 14 cores, 64 GB RAM, macOS 26.5, OpenJDK 21.0.11,
-virtual threads enabled (`server.tomcat.threads...` / Loom — recommended for this sleep-bound server).
+virtual threads enabled (`spring.threads.virtual.enabled=true`, recommended for this sleep-bound server).
 
 **Endpoints under test** (configured via the Admin API):
 
@@ -686,11 +694,6 @@ src/main/java/io/kunkun/mockserver/
   health/
     MockServerHealthIndicator.java       # Custom health indicator
 ```
-
-## Framework Notes
-
-- **Spring Boot 3.x** — uses the Jakarta EE 10 namespace (`jakarta.*`). All Java EE/`javax.*` imports have been migrated.
-- **Caffeine LRU cache** — `MockEndpointService` uses Caffeine instead of `LinkedHashMap` + `ReentrantReadWriteLock`. The old implementation had a concurrency bug: access-order `LinkedHashMap.get()` mutates internal state and is not safe under a shared read lock. Caffeine provides correct concurrent LRU semantics.
 
 ## License
 
