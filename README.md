@@ -29,6 +29,7 @@ A configurable mock HTTP server for simulating API behavior with controlled resp
   - [View Statistics](#view-statistics)
   - [Reset Statistics](#reset-statistics)
   - [Persistence](#persistence)
+  - [Request History](#request-history)
   - [Import from OpenAPI](#import-from-openapi)
 - [Record / Replay Proxy](#record--replay-proxy)
 - [API Versioning](#api-versioning)
@@ -436,6 +437,17 @@ POST /admin/persistence/load
 
 Note: Persistence must be enabled in `application.properties` for save/load operations to work.
 
+### Request History
+
+When `mock-server.history.enabled=true`, the server keeps a bounded per-endpoint list of recent requests (method, path, headers, body, timestamp) for debugging what a load generator actually sent. Off by default because it allocates per request.
+
+```
+GET    /admin/history            # every endpoint's records + endpointCount
+GET    /admin/history/{path}     # one endpoint's records (404 if none)
+DELETE /admin/history/{path}     # clear one endpoint
+DELETE /admin/history            # clear everything
+```
+
 ### Import from OpenAPI
 
 Bulk-create endpoints from an OpenAPI/Swagger document (JSON):
@@ -479,6 +491,8 @@ All admin endpoints are available with a versioned prefix:
 | `/admin/stats` | `/api/v1/admin/stats` |
 | `/admin/stats/reset` | `/api/v1/admin/stats/reset` |
 | `/admin/persistence/*` | `/api/v1/admin/persistence/*` |
+| `/admin/history/*` | `/api/v1/admin/history/*` |
+| `/admin/openapi/import` | `/api/v1/admin/openapi/import` |
 
 ## Live Dashboard
 
@@ -488,7 +502,7 @@ client streams to it automatically when its `dashboard` block is enabled.
 
 Ingestion endpoints (used by the client): `POST /api/tests/register`, `/api/metrics/update`,
 `/api/tests/finish`, `/api/tests/result`. Read endpoints (used by the UI): `GET /api/tests`,
-`GET /api/tests/{id}`.
+`GET /api/tests/{id}`. `DELETE /api/tests` clears the stored runs (requires the API key when one is set).
 
 ```properties
 # Optional: require a key on ingestion POSTs (read endpoints + UI stay open)
